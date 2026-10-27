@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { LADDER_OFFSET } from "./upper-room.js";
 
 // Shortcuts are deliberately unavailable on the public GitHub Pages site.
 export function getTestSetup({ dock, tinny, doorAzimuth, roomFloor, spawn, spawnLook }) {
@@ -18,7 +19,7 @@ export function getTestSetup({ dock, tinny, doorAzimuth, roomFloor, spawn, spawn
     };
   }
   if (scenario === "ladder") {
-    const angle = doorAzimuth + 2.45;
+    const angle = doorAzimuth + LADDER_OFFSET;
     return {
       position: new THREE.Vector3(Math.sin(angle) * 0.65, roomFloor, Math.cos(angle) * 0.65),
       lookAt: new THREE.Vector3(Math.sin(angle) * 1.7, roomFloor + 1.8, Math.cos(angle) * 1.7),

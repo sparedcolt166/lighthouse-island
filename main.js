@@ -11,6 +11,7 @@ import { createWaterSystem } from "./water.js";
 import { showToast } from "./toast.js";
 import { createAttractCamera } from "./attract.js";
 import { createBookCover } from "./book-cover.js";
+import { buildUpperRoom } from "./upper-room.js";
 
 // ---------------------------------------------------------------------------
 // Page bits
@@ -390,6 +391,7 @@ let doorWidth = 1.07;
 let doorOpenAngle = -1.92;
 let doorAzimuth = Math.PI / 4;
 let interiorGroup = null;
+let upperRoom = null;
 
 const cameraEuler = new THREE.Euler(0, 0, 0, "YXZ");
 const moveDirection = new THREE.Vector3();
@@ -402,6 +404,15 @@ function sampleGround(x, z, fromY = 20) {
   groundRay.far = fromY + 40;
   const hits = groundRay.intersectObjects(groundTargets, false);
   return hits.length > 0 ? hits[0].point.y : null;
+}
+
+// Do not let the upper floor's raycast hide the floor beneath it.
+function samplePlayerGround(x, z, feetY) {
+  let fromY = feetY + 3.2;
+  if (upperRoom && Math.hypot(x, z) < 2 && feetY >= upperRoom.floorY - 1 && feetY < upperRoom.ceilingY - 0.05) {
+    fromY = Math.min(fromY, upperRoom.ceilingY - 0.05);
+  }
+  return sampleGround(x, z, fromY);
 }
 
 function isNearDoor() {
@@ -441,6 +452,7 @@ function inDoorway(x, z) {
 }
 
 function solidAt(x, z) {
+  if (upperRoom && player.feet.y >= upperRoom.ceilingY - 0.2) return upperRoom.blocks(x, z, player.feet.y);
   for (const collider of colliders) {
     const reach = collider.radius + PLAYER_RADIUS;
     const dx = x - collider.x;
@@ -462,7 +474,7 @@ function solidAt(x, z) {
 function canStandAt(x, z, feetY) {
   if (tinny && player.grounded && !jumpQueued && tinny.blocksExit(player.feet, x, z)) return false;
   if (solidAt(x, z)) return false;
-  const floor = sampleGround(x, z, feetY + 3.2);
+  const floor = samplePlayerGround(x, z, feetY);
   if (floor === null) return false;
   // Treat anything more than a low step as a wall.
   return floor <= feetY + STEP_HEIGHT;
@@ -490,6 +502,7 @@ function placeAtStart() {
   else placePlayer(SPAWN);
 }
 function resetPlayer() {
+  if (upperRoom) upperRoom.reset();
   placeAtStart();
   player.started = true;
 }
@@ -567,6 +580,13 @@ function updatePlayer(dt) {
   const wantsToMove = moveDirection.lengthSq() > 0;
   if (wantsToMove) moveDirection.normalize();
 
+  if (upperRoom && upperRoom.update(player, forward, forwardInput, jumpQueued, dt)) {
+    jumpQueued = false;
+    player.eyeY = THREE.MathUtils.damp(player.eyeY, player.feet.y + EYE_HEIGHT, 16, dt);
+    camera.position.set(player.feet.x, player.eyeY, player.feet.z);
+    return;
+  }
+
   const running = keys.has("ShiftLeft") || keys.has("ShiftRight");
   const speed = (running ? RUN_SPEED : WALK_SPEED) * sea.speedFactor(player.feet.y);
 
@@ -584,7 +604,7 @@ function updatePlayer(dt) {
   if (canStandAt(player.feet.x + push.x, player.feet.z, player.feet.y)) player.feet.x += push.x;
   if (canStandAt(player.feet.x, player.feet.z + push.z, player.feet.y)) player.feet.z += push.z;
 
-  let floor = sampleGround(player.feet.x, player.feet.z, player.feet.y + 3.2);
+  let floor = samplePlayerGround(player.feet.x, player.feet.z, player.feet.y);
 
   if (player.grounded) {
     if (floor !== null && floor >= player.feet.y - 0.7 && floor <= player.feet.y + STEP_HEIGHT) {
@@ -607,7 +627,7 @@ function updatePlayer(dt) {
   if (!player.grounded) {
     player.velocityY -= GRAVITY * dt;
     player.feet.y += player.velocityY * dt;
-    floor = sampleGround(player.feet.x, player.feet.z, player.feet.y + 3.2);
+    floor = samplePlayerGround(player.feet.x, player.feet.z, player.feet.y);
     if (floor !== null && player.velocityY <= 0 && player.feet.y <= floor) {
       player.feet.y = floor;
       player.velocityY = 0;
@@ -1084,16 +1104,6 @@ function buildInterior(floorY, roomRadius) {
     );
   }
 
-  const ceiling = addMesh(
-    new THREE.CircleGeometry(topRadius, 36),
-    darkWoodMaterial,
-    new THREE.Vector3(0, ceilingY, 0),
-    new THREE.Euler(Math.PI / 2, 0, 0),
-  );
-  ceiling.castShadow = true;
-  ceiling.receiveShadow = true;
-  ceiling.raycast = () => {};
-
   for (const angle of [azimuth, azimuth + Math.PI / 2]) {
     addMesh(
       new THREE.BoxGeometry(topRadius * 1.94, 0.12, 0.16),
@@ -1318,43 +1328,7 @@ function buildInterior(floorY, roomRadius) {
   crateSmall.castShadow = true;
   crate.add(crateSmall);
 
-  // Ladder up to a hatch in the ceiling.
-  const ladderAngle = azimuth + 2.45;
-  const ladder = new THREE.Group();
-  ladder.position.set(
-    Math.sin(ladderAngle) * 1.7,
-    floorY,
-    Math.cos(ladderAngle) * 1.7,
-  );
-  ladder.rotation.y = ladderAngle;
-  group.add(ladder);
-  for (const side of [-1, 1]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 3.62, 0.07), darkWoodMaterial);
-    rail.position.set(side * 0.25, 1.81, 0);
-    rail.castShadow = true;
-    ladder.add(rail);
-  }
-  for (let rung = 0; rung < 9; rung += 1) {
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.045, 0.05), trimMaterial);
-    bar.position.set(0, 0.28 + rung * 0.4, 0);
-    bar.castShadow = true;
-    ladder.add(bar);
-  }
-
-  const hatch = new THREE.Group();
-  hatch.position.set(
-    Math.sin(ladderAngle) * 1.5,
-    ceilingY - 0.035,
-    Math.cos(ladderAngle) * 1.5,
-  );
-  hatch.rotation.y = ladderAngle;
-  group.add(hatch);
-  const hatchDoor = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.05, 18), woodMaterial);
-  hatchDoor.castShadow = true;
-  hatch.add(hatchDoor);
-  const hatchRing = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.025, 8, 24), brassMaterial);
-  hatchRing.rotation.x = Math.PI / 2;
-  hatch.add(hatchRing);
+  upperRoom = buildUpperRoom(scene, groundTargets, azimuth, floorY, ceilingY);
 
   // The furniture is solid so the room feels like a room, not a stage set.
   const addInteriorCollider = (angle, distance, radius) => {
