@@ -5,6 +5,7 @@ import { buildDock } from "./dock.js";
 import { buildFisherman } from "./fisherman.js";
 import { buildTinny } from "./tinny.js";
 import { buildSeagulls } from "./seagulls.js";
+import { buildShips } from "./ships.js";
 import { getTestSetup } from "./dev-test.js";
 import { settleGround } from "./ground.js";
 import { createWaterSystem } from "./water.js";
@@ -367,6 +368,7 @@ let dock = null;
 let fisherman = null;
 let tinny = null;
 let seagulls = null;
+let ships = null;
 let testSetup = null;
 const keys = new Set();
 let jumpQueued = false;
@@ -1391,6 +1393,7 @@ function onModelLoaded(gltf) {
   fisherman = buildFisherman(dock, colliders);
   tinny = buildTinny(dock, groundTargets);
   seagulls = buildSeagulls(scene, model);
+  ships = buildShips(scene);
   testSetup = getTestSetup({ dock, tinny, doorAzimuth, roomFloor: ROOM_FLOOR, spawn: SPAWN, spawnLook: SPAWN_LOOK });
 
   player.ready = true;
@@ -1618,6 +1621,7 @@ function animate() {
   if (fisherman) fisherman.update(dt, elapsed, player.feet);
   if (tinny) tinny.update(elapsed);
   if (seagulls) seagulls.update(dt, elapsed, player.feet);
+  if (ships) ships.update(dt, elapsed);
   sea.update(camera.position.y, dt);
   updateDoor(dt);
 
