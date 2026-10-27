@@ -1,8 +1,10 @@
 import * as THREE from "three";
 
 // The far shore is close enough to see from the jetty, with room to wade onto it.
-const ISLAND_X = 50;
-const ISLAND_Z = 50;
+// It sits 45 degrees round from the jetty's heading, off to the right of the
+// view down the pier rather than straight ahead of it.
+const ISLAND_X = 0;
+const ISLAND_Z = 71;
 
 function terrain(rings, segments, height, color) {
   const positions = [];
