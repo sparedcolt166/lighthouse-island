@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { PointerLockControls } from "./vendor/controls/PointerLockControls.js";
 import { GLTFLoader } from "./vendor/loaders/GLTFLoader.js";
 import { buildDock } from "./dock.js";
+import { buildIslands } from "./islands.js";
 import { buildFisherman } from "./fisherman.js";
 import { buildTinny } from "./tinny.js";
 import { buildSeagulls } from "./seagulls.js";
@@ -363,6 +364,7 @@ const DOWN = new THREE.Vector3(0, -1, 0);
 const groundOrigin = new THREE.Vector3();
 const groundTargets = [];
 const sea = createWaterSystem(scene, groundTargets);
+let islands = null;
 let dock = null;
 let fisherman = null;
 let tinny = null;
@@ -1387,6 +1389,7 @@ function onModelLoaded(gltf) {
 
   // dock.js finds the end of the beach by walking outward until the ground
   // drops below its default minGround (1.3m, the island's old waterline).
+  islands = buildIslands(scene, groundTargets, colliders, sampleGround);
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
   fisherman = buildFisherman(dock, colliders);
   tinny = buildTinny(dock, groundTargets);
@@ -1618,6 +1621,7 @@ function animate() {
   if (fisherman) fisherman.update(dt, elapsed, player.feet);
   if (tinny) tinny.update(elapsed);
   if (seagulls) seagulls.update(dt, elapsed, player.feet);
+  if (islands) islands.update(elapsed);
   sea.update(camera.position.y, dt);
   updateDoor(dt);
 
