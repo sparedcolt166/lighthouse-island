@@ -3,6 +3,7 @@ import { PointerLockControls } from "./vendor/controls/PointerLockControls.js";
 import { GLTFLoader } from "./vendor/loaders/GLTFLoader.js";
 import { buildDock } from "./dock.js";
 import { buildFisherman } from "./fisherman.js";
+import { buildTinny } from "./tinny.js";
 import { settleGround } from "./ground.js";
 import { createWaterSystem } from "./water.js";
 import { showToast } from "./toast.js";
@@ -362,6 +363,7 @@ const groundTargets = [];
 const sea = createWaterSystem(scene, groundTargets);
 let dock = null;
 let fisherman = null;
+let tinny = null;
 const keys = new Set();
 let jumpQueued = false;
 let model = null;
@@ -1371,6 +1373,7 @@ function onModelLoaded(gltf) {
   // drops below its default minGround (1.3m, the island's old waterline).
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
   fisherman = buildFisherman(dock, colliders);
+  tinny = buildTinny(dock);
 
   player.ready = true;
   enterButton.disabled = false;
@@ -1594,6 +1597,7 @@ function animate() {
   attract.update(dt);
   updatePlayer(dt);
   if (fisherman) fisherman.update(dt, elapsed, player.feet);
+  if (tinny) tinny.update(elapsed);
   sea.update(camera.position.y, dt);
   updateDoor(dt);
 
