@@ -23,6 +23,9 @@ const DECK_PLANK_GAP = 0.012;
 const EDGE_BEAM_HEIGHT = 0.18;
 const EDGE_BEAM_WIDTH = 0.16;
 const POST_SPACING = 1.8;
+// Post tops tuck under the cross-heads; bottoms are found per post below.
+const POST_TOP = 0.6;
+const POST_EMBED = 0.35;
 const STAIR_TREAD = 0.34;
 const STAIR_LANDING = 0.38;
 const SHORE_SEARCH_FROM = 6;
@@ -103,6 +106,27 @@ export function buildDock(scene, groundTargets, colliders, options = {}) {
   const stairRun = STAIR_LANDING - 0.2 + stepCount * STAIR_TREAD;
   const deckStart = stairRun;
   const deckEnd = deckStart + DECK_LENGTH;
+
+  // The seabed falls away under the far end of the dock, so each post reaches
+  // down to whatever is beneath it and sinks a little way in. Sample now,
+  // before the deck itself becomes a ground target and blocks the ray.
+  const postZ = [];
+  for (
+    let z = deckStart + 0.4;
+    z <= deckEnd - 0.15;
+    z += POST_SPACING
+  ) {
+    postZ.push(z);
+  }
+  const postBottom = (x, z) => {
+    const fallback = -0.55;
+    if (!sampleGround) return fallback;
+    const worldX = dirX * shoreRadius + x * dirZ + z * dirX;
+    const worldZ = dirZ * shoreRadius - x * dirX + z * dirZ;
+    const ground = sampleGround(worldX, worldZ);
+    return ground === null ? fallback : Math.min(fallback, ground - POST_EMBED);
+  };
+  const postBottoms = postZ.map((z) => [postBottom(-1.08, z), postBottom(1.08, z)]);
 
   const group = new THREE.Group();
   group.name = "Dock";
@@ -279,16 +303,7 @@ export function buildDock(scene, groundTargets, colliders, options = {}) {
   // Posts, cross-heads and a dark waterline band on each post.
   // -------------------------------------------------------------------------
 
-  const postZ = [];
-  for (
-    let z = deckStart + 0.4;
-    z <= deckEnd - 0.15;
-    z += POST_SPACING
-  ) {
-    postZ.push(z);
-  }
-
-  for (const z of postZ) {
+  postZ.forEach((z, row) => {
     pushBox(
       matrices.box,
       DOCK_WIDTH - 0.16,
@@ -298,12 +313,13 @@ export function buildDock(scene, groundTargets, colliders, options = {}) {
       DECK_Y - DECK_PLANK_HEIGHT - 0.14,
       z,
     );
-    for (const side of [-1, 1]) {
+    [-1, 1].forEach((side, column) => {
       const x = side * 1.08;
-      pushCylinder(matrices.cylinder, 0.12, 1.15, x, 0.025, z, 6);
+      const bottom = postBottoms[row][column];
+      pushCylinder(matrices.cylinder, 0.12, POST_TOP - bottom, x, (POST_TOP + bottom) / 2, z, 6);
       pushCylinder(matrices.waterline, 0.13, 0.14, x, 0.04, z, 6);
-    }
-  }
+    });
+  });
 
   mergedMesh(matrices.cylinder, postMaterial, "Dock Posts");
   mergedMesh(matrices.waterline, waterlineMaterial, "Dock Waterline");
