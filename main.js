@@ -4,6 +4,7 @@ import { GLTFLoader } from "./vendor/loaders/GLTFLoader.js";
 import { buildDock } from "./dock.js";
 import { buildFisherman } from "./fisherman.js";
 import { buildTinny } from "./tinny.js";
+import { getTestSetup } from "./dev-test.js";
 import { settleGround } from "./ground.js";
 import { createWaterSystem } from "./water.js";
 import { showToast } from "./toast.js";
@@ -364,6 +365,7 @@ const sea = createWaterSystem(scene, groundTargets);
 let dock = null;
 let fisherman = null;
 let tinny = null;
+let testSetup = null;
 const keys = new Set();
 let jumpQueued = false;
 let model = null;
@@ -464,8 +466,8 @@ function canStandAt(x, z, feetY) {
   return floor <= feetY + STEP_HEIGHT;
 }
 
-function placePlayer(position = SPAWN) {
-  const floor = sampleGround(position.x, position.z, 20);
+function placePlayer(position = SPAWN, fromY = 20, lookAt = SPAWN_LOOK) {
+  const floor = sampleGround(position.x, position.z, fromY);
   player.feet.set(
     position.x,
     floor ?? 1.8,
@@ -477,12 +479,16 @@ function placePlayer(position = SPAWN) {
   player.bobTime = 0;
   player.bobAmount = 0;
   camera.position.set(player.feet.x, player.eyeY, player.feet.z);
-  camera.lookAt(SPAWN_LOOK);
+  camera.lookAt(lookAt);
   player.started = true;
 }
 
+function placeAtStart() {
+  if (testSetup) placePlayer(testSetup.position, testSetup.fromY ?? 20, testSetup.lookAt);
+  else placePlayer(SPAWN);
+}
 function resetPlayer() {
-  placePlayer(SPAWN);
+  placeAtStart();
   player.started = true;
 }
 
@@ -534,17 +540,24 @@ function updatePlayer(dt) {
   if (!walkMode || !player.ready) return;
 
   cameraEuler.setFromQuaternion(camera.quaternion);
+  if (testSetup) {
+    const turn = (keys.has("ArrowLeft") ? 1 : 0) - (keys.has("ArrowRight") ? 1 : 0);
+    const tilt = (keys.has("ArrowUp") ? 1 : 0) - (keys.has("ArrowDown") ? 1 : 0);
+    cameraEuler.y += turn * 1.5 * dt;
+    cameraEuler.x = THREE.MathUtils.clamp(cameraEuler.x + tilt * 1.2 * dt, -Math.PI / 2 + 0.02, Math.PI / 2 - 0.02);
+    camera.quaternion.setFromEuler(cameraEuler);
+  }
   const yaw = cameraEuler.y;
 
   forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
   right.set(Math.cos(yaw), 0, -Math.sin(yaw));
 
   const forwardInput =
-    (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
-    (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
+    (keys.has("KeyW") || (!testSetup && keys.has("ArrowUp")) ? 1 : 0) -
+    (keys.has("KeyS") || (!testSetup && keys.has("ArrowDown")) ? 1 : 0);
   const sideInput =
-    (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) -
-    (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
+    (keys.has("KeyD") || (!testSetup && keys.has("ArrowRight")) ? 1 : 0) -
+    (keys.has("KeyA") || (!testSetup && keys.has("ArrowLeft")) ? 1 : 0);
 
   moveDirection.set(0, 0, 0);
   moveDirection.addScaledVector(forward, forwardInput);
@@ -1375,6 +1388,7 @@ function onModelLoaded(gltf) {
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
   fisherman = buildFisherman(dock, colliders);
   tinny = buildTinny(dock, groundTargets);
+  testSetup = getTestSetup({ dock, tinny, doorAzimuth, roomFloor: ROOM_FLOOR, spawn: SPAWN, spawnLook: SPAWN_LOOK });
 
   player.ready = true;
   enterButton.disabled = false;
@@ -1452,21 +1466,21 @@ function setPlayingUI() {
   statusLine.textContent = "";
 }
 
-function enableDragLook() {
+function enableDragLook(quiet = false) {
   pointerLook = false;
   dragLook = true;
   pointerLockBlocked = true;
   canvas.classList.add("drag-look");
-  lookHint.innerHTML = "<kbd>Drag</kbd> look";
+  lookHint.innerHTML = testSetup ? "<kbd>Arrows</kbd> look" : "<kbd>Drag</kbd> look";
   setPlayingUI();
-  console.warn("Pointer lock unavailable; using drag-to-look.");
+  if (!quiet) console.warn("Pointer lock unavailable; using drag-to-look.");
 }
 
 function enterWalkabout() {
   if (!player.ready) return;
 
   if (!player.started) {
-    placePlayer(SPAWN);
+    placeAtStart();
   }
 
   attract.stop();
@@ -1476,8 +1490,8 @@ function enterWalkabout() {
   walkMode = true;
   setPlayingUI();
 
-  if (pointerLockBlocked) {
-    enableDragLook();
+  if (pointerLockBlocked || testSetup) {
+    enableDragLook(Boolean(testSetup));
     return;
   }
 
