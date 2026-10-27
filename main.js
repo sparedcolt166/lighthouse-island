@@ -456,6 +456,7 @@ function solidAt(x, z) {
 }
 
 function canStandAt(x, z, feetY) {
+  if (tinny && player.grounded && !jumpQueued && tinny.blocksExit(player.feet, x, z)) return false;
   if (solidAt(x, z)) return false;
   const floor = sampleGround(x, z, feetY + 3.2);
   if (floor === null) return false;
@@ -1373,7 +1374,7 @@ function onModelLoaded(gltf) {
   // drops below its default minGround (1.3m, the island's old waterline).
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
   fisherman = buildFisherman(dock, colliders);
-  tinny = buildTinny(dock);
+  tinny = buildTinny(dock, groundTargets);
 
   player.ready = true;
   enterButton.disabled = false;
