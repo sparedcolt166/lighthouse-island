@@ -7,6 +7,7 @@ import { buildFisherman } from "./fisherman.js";
 import { buildTinny } from "./tinny.js";
 import { buildSeagulls } from "./seagulls.js";
 import { buildShips } from "./ships.js";
+import { createAmbientAudio } from "./audio.js";
 import { getTestSetup } from "./dev-test.js";
 import { settleGround } from "./ground.js";
 import { createWaterSystem } from "./water.js";
@@ -372,6 +373,7 @@ let fisherman = null;
 let tinny = null;
 let seagulls = null;
 let ships = null;
+const ambientAudio = createAmbientAudio();
 let testSetup = null;
 const keys = new Set();
 let jumpQueued = false;
@@ -541,6 +543,7 @@ window.addEventListener("keydown", (event) => {
     else if (fisherman && fisherman.canInteract(camera)) fisherman.interact(player.feet);
   }
   if (event.code === "KeyR" && walkMode) resetPlayer();
+  if (event.code === "KeyM" && !event.repeat && walkMode) showToast(ambientAudio.toggleMute() ? "Sound muted" : "Sound on", 2500);
 });
 
 window.addEventListener("keyup", (event) => {
@@ -1475,6 +1478,7 @@ function enterWalkabout() {
   keys.clear();
   jumpQueued = false;
   walkMode = true;
+  ambientAudio.start();
   setPlayingUI();
 
   if (pointerLockBlocked || testSetup) {
@@ -1497,6 +1501,7 @@ function enterWalkabout() {
 
 function pauseWalkabout(message = "Paused. The lamp will wait.") {
   walkMode = false;
+  ambientAudio.pause();
   keys.clear();
   jumpQueued = false;
   dragging = false;
@@ -1603,6 +1608,7 @@ function animate() {
   if (seagulls) seagulls.update(dt, elapsed, player.feet);
   if (ships) ships.update(dt, elapsed);
   if (islands) islands.update(elapsed);
+  if (walkMode) ambientAudio.update(camera, player.feet, seagulls?.gulls, ROOM_FLOOR, TOWER_RADIUS);
   sea.update(camera.position.y, dt);
   updateDoor(dt);
 
