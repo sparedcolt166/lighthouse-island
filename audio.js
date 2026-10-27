@@ -9,6 +9,7 @@ export function createAmbientAudio() {
   let muted = false;
   let nextGull = 0, nextNote = 0, nextPad = 0, nextListener = 0;
   let sheltered = false;
+  let broken = false;
   const forward = new THREE.Vector3();
   const up = new THREE.Vector3();
   const notes = [220, 246.94, 293.66, 329.63, 369.99, 440, 493.88, 587.33];
@@ -86,9 +87,13 @@ export function createAmbientAudio() {
     panner.distanceModel = "inverse";
     panner.refDistance = 12;
     panner.rolloffFactor = 0.7;
-    panner.positionX.value = position.x;
-    panner.positionY.value = position.y;
-    panner.positionZ.value = position.z;
+    if (panner.positionX) {
+      panner.positionX.value = position.x;
+      panner.positionY.value = position.y;
+      panner.positionZ.value = position.z;
+    } else {
+      panner.setPosition(position.x, position.y, position.z);
+    }
     panner.connect(outsideFilter);
     const count = Math.random() < 0.5 ? 2 : 3;
     for (let i = 0; i < count; i++) {
@@ -123,15 +128,21 @@ export function createAmbientAudio() {
       const listener = context.listener;
       forward.set(0, 0, -1).applyQuaternion(camera.quaternion);
       up.set(0, 1, 0).applyQuaternion(camera.quaternion);
-      listener.positionX.value = camera.position.x;
-      listener.positionY.value = camera.position.y;
-      listener.positionZ.value = camera.position.z;
-      listener.forwardX.value = forward.x;
-      listener.forwardY.value = forward.y;
-      listener.forwardZ.value = forward.z;
-      listener.upX.value = up.x;
-      listener.upY.value = up.y;
-      listener.upZ.value = up.z;
+      // Firefox has no AudioListener.positionX & co., only the older setters.
+      if (listener.positionX) {
+        listener.positionX.value = camera.position.x;
+        listener.positionY.value = camera.position.y;
+        listener.positionZ.value = camera.position.z;
+        listener.forwardX.value = forward.x;
+        listener.forwardY.value = forward.y;
+        listener.forwardZ.value = forward.z;
+        listener.upX.value = up.x;
+        listener.upY.value = up.y;
+        listener.upZ.value = up.z;
+      } else {
+        listener.setPosition(camera.position.x, camera.position.y, camera.position.z);
+        listener.setOrientation(forward.x, forward.y, forward.z, up.x, up.y, up.z);
+      }
       nextListener = now + 0.2;
     }
     if (now >= nextGull && gulls && gulls.length) {
@@ -167,6 +178,16 @@ export function createAmbientAudio() {
       if (context) master.gain.setTargetAtTime(muted ? 0 : MASTER_VOLUME, context.currentTime, 0.05);
       return muted;
     },
-    update,
+    // This runs inside the render loop, so a browser quirk here must never
+    // stop the frame: give up on ambience instead of freezing the game.
+    update(...args) {
+      if (broken) return;
+      try {
+        update(...args);
+      } catch (error) {
+        broken = true;
+        console.warn("Ambient audio stopped updating", error);
+      }
+    },
   };
 }
