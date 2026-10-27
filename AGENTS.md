@@ -18,6 +18,8 @@ A static, first-person browser walkabout built with Three.js r170. No build step
 
 Start the game with `node server.mjs` (or double-click `start.cmd`) and open `http://127.0.0.1:8000/`. Before you say a change works, load the page and check that the browser console shows no errors. There is no test suite.
 
+For easier local browser testing, add `?test=controls`, `?test=dock`, `?test=boat`, or `?test=ladder` to the local URL. Click to start; `WASD` moves, arrow keys turn/look, and `R` resets to the chosen starting point. The boat shortcut starts aboard; the ladder shortcut starts in front of the interior ladder. Test mode uses drag/keyboard look without requesting pointer lock. These shortcuts work only on localhost and do not change the public game's controls. Use the normal URL as well when checking the ordinary player experience.
+
 ## Working in parallel
 
 Several agents can work at once, each in its own folder (a git worktree of this same repo, checked out on its own branch):
