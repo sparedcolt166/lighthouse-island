@@ -4,6 +4,7 @@ import { GLTFLoader } from "./vendor/loaders/GLTFLoader.js";
 import { buildDock } from "./dock.js";
 import { buildFisherman } from "./fisherman.js";
 import { buildTinny } from "./tinny.js";
+import { buildSeagulls } from "./seagulls.js";
 import { getTestSetup } from "./dev-test.js";
 import { settleGround } from "./ground.js";
 import { createWaterSystem } from "./water.js";
@@ -365,6 +366,7 @@ const sea = createWaterSystem(scene, groundTargets);
 let dock = null;
 let fisherman = null;
 let tinny = null;
+let seagulls = null;
 let testSetup = null;
 const keys = new Set();
 let jumpQueued = false;
@@ -1388,6 +1390,7 @@ function onModelLoaded(gltf) {
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
   fisherman = buildFisherman(dock, colliders);
   tinny = buildTinny(dock, groundTargets);
+  seagulls = buildSeagulls(scene, model);
   testSetup = getTestSetup({ dock, tinny, doorAzimuth, roomFloor: ROOM_FLOOR, spawn: SPAWN, spawnLook: SPAWN_LOOK });
 
   player.ready = true;
@@ -1408,6 +1411,7 @@ function onModelLoaded(gltf) {
     window.__lighthouse.doorPivot = doorPivot;
     window.__lighthouse.interior = interiorGroup;
     window.__lighthouse.dock = dock;
+    window.__lighthouse.seagulls = seagulls;
   }
 }
 
@@ -1613,6 +1617,7 @@ function animate() {
   updatePlayer(dt);
   if (fisherman) fisherman.update(dt, elapsed, player.feet);
   if (tinny) tinny.update(elapsed);
+  if (seagulls) seagulls.update(dt, elapsed, player.feet);
   sea.update(camera.position.y, dt);
   updateDoor(dt);
 
