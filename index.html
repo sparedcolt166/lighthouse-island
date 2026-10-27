@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#071a22">
+  <title>Lighthouse Island — A Walkabout</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <canvas id="view" aria-label="A walkable low-poly lighthouse island"></canvas>
+
+  <div id="overlay" class="hidden">
+    <div class="panel">
+      <p class="eyebrow">A small world, off the map</p>
+      <h1>Lighthouse<br><em>Island</em></h1>
+      <p class="lede">A striped beacon on a rock in the sea. The lamp is lit, the gulls have gone quiet. Take a wander.</p>
+      <button id="enter" disabled>Loading the island&hellip;</button>
+      <div class="keys" aria-label="Controls">
+        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span>
+        <span><kbd>Mouse</kbd> look</span>
+        <span><kbd>Shift</kbd> run</span>
+        <span><kbd>Space</kbd> jump</span>
+        <span><kbd>E</kbd> doors</span>
+        <span><kbd>R</kbd> reset</span>
+        <span><kbd>Esc</kbd> pause</span>
+      </div>
+      <p id="status" role="status"></p>
+    </div>
+    <p class="credit">Built with Blender &amp; Three.js</p>
+  </div>
+
+  <div id="toast" class="visible" role="status">Loading the island&hellip;</div>
+  <p id="start-prompt" aria-live="polite">Click any button to start</p>
+  <div id="crosshair" aria-hidden="true"></div>
+  <div id="interact" aria-hidden="true">
+    <kbd>E</kbd><span id="interact-label">Open the door</span>
+  </div>
+  <div id="hud" aria-hidden="true">
+    <span><kbd>WASD</kbd> move</span>
+    <span id="look-hint"><kbd>Mouse</kbd> look</span>
+    <span><kbd>Shift</kbd> run</span>
+    <span><kbd>Space</kbd> jump</span>
+    <span><kbd>Esc</kbd> pause</span>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js"
+      }
+    }
+  </script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# Local-only files
+*.blend
+*.blend1
+.env
+.env.*
+*.log
+node_modules/
+__pycache__/
+.venv/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Agent local state
+.claude/settings.local.json
+.opencode/
