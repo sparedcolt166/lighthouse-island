@@ -1,14 +1,14 @@
 import * as THREE from "three";
 
-// The shore is roughly 10 m from the centre; these rings keep the beach clear.
-const SHORE_RADIUS = 10;
+// Keep the shallow seabed under the enlarged shoreline.
+const SHORE_RADIUS = 13;
 const SHORE_DEPTH = 0.18;
 const MID_RADIUS = SHORE_RADIUS + 8;
 const MID_DEPTH = 2;
 const DEEP_RADIUS = 35;
 const DEEP_DEPTH = 6;
-const SEABED_RADIUS = 56;
-const BOUNDARY_START = 40;
+const SEABED_RADIUS = 110;
+const BOUNDARY_START = 95;
 const BOUNDARY_STRENGTH = 1.8;
 const WAIST_DEPTH = 0.85;
 const WAIST_SPEED = 0.6;
@@ -33,7 +33,7 @@ function seabedHeight(radius) {
 function makeSeabed() {
   const segments = 96;
   // Extra rings make the shallow slope gradual without adding a dense mesh.
-  const rings = [0, 4, 8, 10, 12, 14, 16, 18, 22, 26, 30, 35, 45, SEABED_RADIUS];
+  const rings = [0, 4, 8, 10, 12, 14, 16, 18, 22, 26, 30, 35, 45, 65, 85, SEABED_RADIUS];
   const positions = [];
   const indices = [];
   for (const radius of rings) {
