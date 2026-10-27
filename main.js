@@ -521,8 +521,9 @@ window.addEventListener("keydown", (event) => {
   }
   keys.add(event.code);
   if (event.code === "Space" && !event.repeat && walkMode) jumpQueued = true;
-  if (event.code === "KeyE" && !event.repeat && walkMode && canUseDoor()) {
-    toggleDoor();
+  if (event.code === "KeyE" && !event.repeat && walkMode) {
+    if (canUseDoor()) toggleDoor();
+    else if (fisherman && fisherman.canInteract(camera)) fisherman.interact(player.feet);
   }
   if (event.code === "KeyR" && walkMode) resetPlayer();
 });
@@ -1458,8 +1459,10 @@ function updateDoor(dt) {
   }
 
   const near = walkMode && canUseDoor();
-  interact.classList.toggle("visible", near);
+  const nearFisherman = walkMode && !near && fisherman && fisherman.canInteract(camera);
+  interact.classList.toggle("visible", !!(near || nearFisherman));
   if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
+  else if (nearFisherman) interactLabel.textContent = "Talk to the fisherman";
 }
 
 // ---------------------------------------------------------------------------
