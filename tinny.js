@@ -111,6 +111,7 @@ export function buildTinny(dock, groundTargets) {
   };
 
   return {
+    group,
     blocksExit(feet, x, z) {
       localFeet.copy(feet);
       group.worldToLocal(localFeet);
