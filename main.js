@@ -9,7 +9,7 @@ import { buildTinny } from "./tinny.js";
 import { buildSeagulls } from "./seagulls.js";
 import { buildShips } from "./ships.js";
 import { createAmbientAudio } from "./audio.js";
-import { getTestSetup } from "./dev-test.js";
+import { getTestSetup, isRainTest } from "./dev-test.js";
 import { settleGround } from "./ground.js";
 import { createWaterSystem } from "./water.js";
 import { showToast } from "./toast.js";
@@ -17,6 +17,7 @@ import { createAttractCamera } from "./attract.js";
 import { createBookCover } from "./book-cover.js";
 import { buildUpperRoom } from "./upper-room.js";
 import { buildDayNight } from "./daynight.js";
+import { createWeather } from "./weather.js";
 
 // ---------------------------------------------------------------------------
 // Page bits
@@ -377,6 +378,7 @@ let tinny = null;
 let seagulls = null;
 let ships = null;
 const ambientAudio = createAmbientAudio();
+const weather = createWeather(scene, camera, cloudMaterial, sampleGround, ROOM_FLOOR, TOWER_RADIUS, isRainTest());
 let testSetup = null;
 let dayNight = null;
 const keys = new Set();
@@ -549,7 +551,11 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.code === "KeyR" && walkMode) resetPlayer();
   if (event.code === "KeyT" && !event.repeat && testSetup && dayNight) showToast(`Time speed: ${dayNight.toggleSpeed()}x`, 2500);
-  if (event.code === "KeyM" && !event.repeat && walkMode) showToast(ambientAudio.toggleMute() ? "Sound muted" : "Sound on", 2500);
+  if (event.code === "KeyM" && !event.repeat && walkMode) {
+    const muted = ambientAudio.toggleMute();
+    weather.setMuted(muted);
+    showToast(muted ? "Sound muted" : "Sound on", 2500);
+  }
 });
 
 window.addEventListener("keyup", (event) => {
@@ -1489,6 +1495,7 @@ function enterWalkabout() {
   jumpQueued = false;
   walkMode = true;
   ambientAudio.start();
+  weather.start();
   setPlayingUI();
 
   if (pointerLockBlocked || testSetup) {
@@ -1512,6 +1519,7 @@ function enterWalkabout() {
 function pauseWalkabout(message = "Paused. The lamp will wait.") {
   walkMode = false;
   ambientAudio.pause();
+  weather.pause();
   keys.clear();
   jumpQueued = false;
   dragging = false;
@@ -1622,6 +1630,7 @@ function animate() {
   if (walkMode) ambientAudio.update(camera, player.feet, seagulls?.gulls, ROOM_FLOOR, TOWER_RADIUS);
   sea.update(camera.position.y, dt);
   updateDoor(dt);
+  weather.update(dt, player.feet, walkMode);
 
   waterNormal.offset.x = (waterNormal.offset.x + dt * 0.012) % 1;
   waterNormal.offset.y = (waterNormal.offset.y - dt * 0.008 + 1) % 1;
