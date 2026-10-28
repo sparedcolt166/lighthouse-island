@@ -28,6 +28,24 @@
       </div>
       <p id="status" role="status"></p>
     </div>
+    <section id="pause-menu" class="pause-panel" aria-label="Pause menu" hidden>
+      <p class="eyebrow">Lighthouse Island</p><h2>The lamp will wait.</h2>
+      <nav class="pause-actions" aria-label="Pause actions">
+        <button id="resume">Resume</button><button id="settings-toggle" aria-expanded="false" aria-controls="settings-panel">Settings</button><button id="controls-toggle" aria-expanded="false" aria-controls="controls-panel">Controls</button><button id="reset-start">Reset to start</button><button id="new-game">New game</button>
+      </nav>
+      <div id="settings-panel" class="pause-details" hidden>
+        <label>Master volume <input id="setting-master" type="range" min="0" max="1" step="0.05"></label>
+        <label>Music volume <input id="setting-music" type="range" min="0" max="1" step="0.05"></label>
+        <label>Effects volume <input id="setting-effects" type="range" min="0" max="1" step="0.05"></label>
+        <label>Mouse sensitivity <input id="setting-sensitivity" type="range" min="0.3" max="2" step="0.1"></label>
+        <label>Field of view <input id="setting-fov" type="range" min="55" max="100" step="1"></label>
+        <label>Invert Y <input id="setting-invertY" type="checkbox"></label>
+        <label>Graphics quality <select id="setting-quality"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+      </div>
+      <div id="controls-panel" class="pause-details controls-list" hidden>
+        <span><kbd>W A S D</kbd> Move</span><span><kbd>Mouse / drag</kbd> Look</span><span><kbd>Arrow keys</kbd> Look</span><span><kbd>Shift</kbd> Run</span><span><kbd>Space</kbd> Jump / swim up</span><span><kbd>E</kbd> Interact</span><span><kbd>R</kbd> Reset</span><span><kbd>M</kbd> Mute</span><span><kbd>F</kbd> Cast / reel</span><span><kbd>Q</kbd> Put rod away</span><span><kbd>C</kbd> Dive</span><span><kbd>Enter / H / S / D</kbd> Blackjack: deal / hit / stand / double</span><span><kbd>Esc</kbd> Pause / close</span>
+      </div>
+    </section>
     <p class="credit">Built with Blender &amp; Three.js</p>
   </div>
 

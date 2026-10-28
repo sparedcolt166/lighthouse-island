@@ -6,7 +6,8 @@ const MASTER_VOLUME = 0.9;
 
 export function createAmbientAudio() {
   let context = null;
-  let master, game, outside, outsideFilter;
+  let master, game, musicGain, effectsGain, titleGain, outside, outsideFilter;
+  let masterVolume = 1, musicVolume = 1, effectsVolume = 1;
   let muted = false;
   let nextGull = 0, nextNote = 0, nextPad = 0, nextListener = 0;
   let footsteps = null;
@@ -41,14 +42,17 @@ export function createAmbientAudio() {
     if (!AudioContext) return false;
     context = new AudioContext();
     master = context.createGain();
-    master.gain.value = muted ? 0 : MASTER_VOLUME;
+    master.gain.value = muted ? 0 : MASTER_VOLUME * masterVolume;
     master.connect(context.destination);
     game = context.createGain();
     game.gain.value = 0;
     game.connect(master);
+    musicGain = context.createGain(); musicGain.gain.value = musicVolume; musicGain.connect(game);
+    effectsGain = context.createGain(); effectsGain.gain.value = effectsVolume; effectsGain.connect(game);
+    titleGain = context.createGain(); titleGain.gain.value = musicVolume; titleGain.connect(master);
     outside = context.createGain();
     outside.gain.value = 1;
-    outside.connect(game);
+    outside.connect(effectsGain);
     outsideFilter = context.createBiquadFilter();
     outsideFilter.type = "lowpass";
     outsideFilter.frequency.value = 6000;
@@ -63,7 +67,7 @@ export function createAmbientAudio() {
       samples[i] *= fade;
       samples[samples.length - 1 - i] *= fade;
     }
-    footsteps = createFootsteps(context, game, noise);
+    footsteps = createFootsteps(context, effectsGain, noise);
     // Two slow, independent swells keep the repeating noise bed unobtrusive.
     makeBed(noise, 650, 0.16, 0.075, 0.10);
     makeBed(noise, 1800, 0.035, 0.043, 0.018);
@@ -81,7 +85,7 @@ export function createAmbientAudio() {
     envelope.gain.setValueAtTime(0.0001, start);
     envelope.gain.exponentialRampToValueAtTime(volume, start + (type === "sine" ? 0.06 : 2));
     envelope.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-    oscillator.connect(envelope).connect(game);
+    oscillator.connect(envelope).connect(musicGain);
     oscillator.start(start);
     oscillator.stop(start + duration);
   }
@@ -198,7 +202,7 @@ export function createAmbientAudio() {
     titleOutput() {
       try {
         if (!context && !initialize()) return null;
-        return { context, master };
+        return { context, master: titleGain };
       } catch (error) {
         console.warn("Title audio unavailable", error);
         return null;
@@ -228,9 +232,15 @@ export function createAmbientAudio() {
         console.warn("Ambient audio pause unavailable", error);
       }
     },
+    getMuted: () => muted,
+    setMuted(value) { muted = Boolean(value); if (context) master.gain.setTargetAtTime(muted ? 0 : MASTER_VOLUME * masterVolume, context.currentTime, 0.05); },
+    setVolumes(settings) {
+      masterVolume = settings.master; musicVolume = settings.music; effectsVolume = settings.effects;
+      if (context && master && musicGain && effectsGain) { master.gain.setTargetAtTime(muted ? 0 : MASTER_VOLUME * masterVolume, context.currentTime, 0.05); musicGain.gain.setTargetAtTime(musicVolume, context.currentTime, 0.05); titleGain.gain.setTargetAtTime(musicVolume, context.currentTime, 0.05); effectsGain.gain.setTargetAtTime(effectsVolume, context.currentTime, 0.05); }
+    },
     toggleMute() {
       muted = !muted;
-      if (context) master.gain.setTargetAtTime(muted ? 0 : MASTER_VOLUME, context.currentTime, 0.05);
+      if (context) master.gain.setTargetAtTime(muted ? 0 : MASTER_VOLUME * masterVolume, context.currentTime, 0.05);
       return muted;
     },
     // This runs inside the render loop, so a browser quirk here must never
