@@ -165,6 +165,32 @@ export function createAmbientAudio() {
   }
 
   return {
+    wildlifeSplash(position) {
+      try {
+        if (!context || context.state !== "running") return;
+        const now = context.currentTime;
+        const panner = context.createPanner();
+        panner.panningModel = "equalpower";
+        panner.refDistance = 15;
+        if (panner.positionX) {
+          panner.positionX.value = position.x;
+          panner.positionY.value = position.y;
+          panner.positionZ.value = position.z;
+        } else panner.setPosition(position.x, position.y, position.z);
+        const oscillator = context.createOscillator();
+        const envelope = context.createGain();
+        oscillator.type = "triangle";
+        oscillator.frequency.setValueAtTime(650, now);
+        oscillator.frequency.exponentialRampToValueAtTime(120, now + 0.25);
+        envelope.gain.setValueAtTime(0.035, now);
+        envelope.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+        oscillator.connect(envelope).connect(panner).connect(outsideFilter);
+        oscillator.start(now);
+        oscillator.stop(now + 0.3);
+      } catch (error) {
+        console.warn("Wildlife audio unavailable", error);
+      }
+    },
     movementSound(action, ...args) {
       try {
         if (footsteps) footsteps[action](...args);
