@@ -398,7 +398,7 @@ let seagulls = null;
 let ships = null;
 const ambientAudio = createAmbientAudio();
 const titleMusic = createTitleMusic(ambientAudio);
-const weather = createWeather(scene, camera, cloudMaterial, sampleGround, ROOM_FLOOR, TOWER_RADIUS, isRainTest());
+const weather = createWeather(scene, camera, cloudMaterial, sampleGround, ROOM_FLOOR, TOWER_RADIUS, isRainTest(), ambientAudio);
 let testSetup = null;
 let dayNight = null;
 let waterGraphics = null;
@@ -423,7 +423,7 @@ function applySettings(values) {
   renderer.shadowMap.needsUpdate = true;
   setQuality(values.quality);
   ambientAudio.setVolumes(values);
-  weather.setVolume(values.master * values.effects);
+  weather.setVolume(1);
 }
 settings = createSettings(applySettings);
 
@@ -431,7 +431,7 @@ function saveProgress() {
   if (!player.started || testSetup) return;
   try {
     writeSave({ position: player.feet.toArray(), rotation: camera.quaternion.toArray(),
-      time: dayNight?.getState(), blackjack: blackjack?.getState(), fishing: fishing?.getState(), muted: ambientAudio.getMuted() });
+      time: dayNight?.getState(), lampLit: dayNight?.isLampLit(), blackjack: blackjack?.getState(), fishing: fishing?.getState(), muted: ambientAudio.getMuted() });
   } catch (error) { console.warn("Could not save the walk", error); }
 }
 function restoreProgress(saved) {
@@ -444,6 +444,7 @@ function restoreProgress(saved) {
     camera.quaternion.fromArray(saved.rotation).normalize();
   }
   dayNight?.setState(saved.time);
+  if (typeof saved.lampLit === "boolean") dayNight?.setLampLit(saved.lampLit);
   blackjack?.setState(saved.blackjack);
   fishing?.setState(saved.fishing);
   if (typeof saved.muted === "boolean") { ambientAudio.setMuted(saved.muted); weather.setMuted(saved.muted); }
@@ -596,7 +597,10 @@ function resetPlayer() {
 window.addEventListener("keydown", (event) => {
   if (interiorProps && interiorProps.key(event)) return;
   if (blackjack && blackjack.key(event)) return;
-  if (event.code === "Escape" && walkMode && !pointerLook) {
+  if (event.code === "Escape" && walkMode) {
+    event.preventDefault();
+    if (fishing?.closeOverlay()) return;
+    if (document.pointerLockElement) document.exitPointerLock();
     pauseWalkabout();
     return;
   }
@@ -1477,7 +1481,8 @@ function buildInterior(floorY, roomRadius) {
     });
   };
   addInteriorCollider(backAngle, tableRadius, 0.46);
-  addInteriorCollider(barrelAngle, 1.47, 0.34);
+  // This barrel occupied the narrow space between the shrine and ladder.
+  group.remove(barrel);
   addInteriorCollider(crateAngle, 1.43, 0.42);
   brunsonShrine = buildBrunsonShrine(group, azimuth, floorY, roomRadius, colliders);
 }
@@ -1489,6 +1494,7 @@ function forWallFacing(angle) {
 }
 
 function onModelLoaded(gltf) {
+  try {
   model = gltf.scene;
   model.name = "Lighthouse Island";
   model.scale.setScalar(WORLD_SCALE);
@@ -1499,7 +1505,10 @@ function onModelLoaded(gltf) {
   const grassSkirt = model.getObjectByName("Grass_Skirt");
   if (grassSkirt) groundTargets.push(grassSkirt);
   setupDoorAndInterior(model);
-  if (upperRoom) lanternGallery = buildLanternGallery(scene, model, groundTargets, doorAzimuth, upperRoom.ceilingY);
+  if (upperRoom) {
+    try { lanternGallery = buildLanternGallery(scene, model, groundTargets, doorAzimuth, upperRoom.ceilingY); }
+    catch (error) { console.warn("Lantern gallery unavailable", error); }
+  }
 
   // dock.js finds the end of the beach by walking outward until the ground
   // drops below its default minGround (1.3m, the island's old waterline).
@@ -1508,15 +1517,16 @@ function onModelLoaded(gltf) {
   headland = buildHeadland(scene, groundTargets, colliders, sampleGround);
   try { wildlife = buildWildlife(scene, sampleGround, (position) => ambientAudio.wildlifeSplash(position)); }
   catch (error) { console.warn("Wildlife unavailable", error); }
-  waterGraphics = createWaterGraphics({ scene, camera, renderer, water, waterMaterial, sunLight, dock });
+  try { waterGraphics = createWaterGraphics({ scene, camera, renderer, water, waterMaterial, sunLight, dock }); }
+  catch (error) { console.warn("Water graphics unavailable", error); }
   fisherman = buildFisherman(dock, colliders);
   brunson = buildBrunson(dock, colliders);
-  fishing = buildFishing(scene, camera, dock, canvas, () => walkMode);
+  fishing = buildFishing(scene, camera, dock, canvas, () => walkMode && !blackjack?.open && !interiorProps?.open);
   tinny = buildTinny(dock, groundTargets, sea, solidAt);
   seagulls = buildSeagulls(scene, model);
   ships = buildShips(scene);
   testSetup = getTestSetup({ dock, tinny, doorAzimuth, roomFloor: ROOM_FLOOR, lanternGallery, spawn: SPAWN, spawnLook: SPAWN_LOOK });
-  if (testSetup?.fishing) fishing.giveRod();
+  if (testSetup?.fishing) fishing?.giveRod();
   dayNight = buildDayNight({ scene, skyMaterial, sunSprite, sunLight, hemisphereLight, cloudMaterial, waterMaterial, lanternLight, lanternGlowMaterial, model, testSetup });
 
   player.ready = true;
@@ -1540,6 +1550,7 @@ function onModelLoaded(gltf) {
     window.__lighthouse.dock = dock;
     window.__lighthouse.seagulls = seagulls;
   }
+  } catch (error) { onModelError(error); }
 }
 
 function onModelProgress(event) {
@@ -1698,7 +1709,7 @@ for (const name of ["settings", "controls"]) {
 }
 document.querySelector("#reset-start").addEventListener("click", () => { resetPlayer(); saveProgress(); enterWalkabout(); });
 document.querySelector("#new-game").addEventListener("click", () => {
-  if (!testSetup) clearSave(); resetPlayer(); dayNight?.setState(0); blackjack?.setState({ balance: 100 });
+  if (!testSetup) clearSave(); resetPlayer(); dayNight?.setState(0); dayNight?.setLampLit(false); blackjack?.setState({ balance: 100 });
   fishing?.reset();
   ambientAudio.setMuted(false); weather.setMuted(false); enterWalkabout();
 });
@@ -1795,36 +1806,41 @@ camera.lookAt(0, 8.4, 0);
 const clock = new THREE.Clock();
 let elapsed = 0;
 
+const failedFrameTasks = new Set();
+function frameTask(name, action) {
+  if (failedFrameTasks.has(name)) return;
+  try { action(); } catch (error) { failedFrameTasks.add(name); console.warn(`${name} stopped updating`, error); }
+}
+
 function animate() {
   const frameTime = clock.getDelta();
   const dt = Math.min(frameTime, 0.05);
   elapsed += dt;
 
-  attract.update(dt);
-  updatePlayer(dt);
-  if (fisherman) fisherman.update(dt, elapsed, player.feet);
-  if (brunson) brunson.update(dt, elapsed, player.feet);
-  if (brunsonShrine) brunsonShrine.update(elapsed);
-  if (fishing) fishing.update(dt, elapsed);
-  if (blackjack) blackjack.update(elapsed, camera);
-  if (interiorProps) interiorProps.update(elapsed, camera, walkMode);
-  if (tinny) tinny.update(elapsed);
-  if (seagulls) seagulls.update(dt, elapsed, player.feet);
-  if (ships) ships.update(dt, elapsed);
-  if (islands) islands.update(elapsed);
-  if (headland) headland.update(elapsed);
-  if (wildlife) wildlife.update(dt, elapsed, player.feet, dayNight ? dayNight.getDaylight() : 1);
-  if (walkMode) ambientAudio.update(camera, player.feet, seagulls?.gulls, ROOM_FLOOR, TOWER_RADIUS);
-  sea.update(camera.position.y, dt);
-  updateDoor(dt);
-  weather.update(dt, player.feet, walkMode);
+  frameTask("attract", () => { attract.update(dt); });
+  frameTask("player", () => { updatePlayer(dt); });
+  frameTask("fisherman", () => { if (fisherman) fisherman.update(dt, elapsed, player.feet); });
+  frameTask("brunson", () => { if (brunson) brunson.update(dt, elapsed, player.feet); });
+  frameTask("brunsonShrine", () => { if (brunsonShrine) brunsonShrine.update(elapsed); });
+  frameTask("fishing", () => { if (fishing) fishing.update(dt, elapsed); });
+  frameTask("blackjack", () => { if (blackjack) blackjack.update(elapsed, camera); });
+  frameTask("interiorProps", () => { if (interiorProps) interiorProps.update(elapsed, camera, walkMode); });
+  frameTask("tinny", () => { if (tinny) tinny.update(elapsed); });
+  frameTask("seagulls", () => { if (seagulls) seagulls.update(dt, elapsed, player.feet); });
+  frameTask("ships", () => { if (ships) ships.update(dt, elapsed); });
+  frameTask("islands", () => { if (islands) islands.update(elapsed); });
+  frameTask("headland", () => { if (headland) headland.update(elapsed); });
+  frameTask("wildlife", () => { if (wildlife) wildlife.update(dt, elapsed, player.feet, dayNight ? dayNight.getDaylight() : 1); });
+  frameTask("ambientAudio", () => { if (walkMode) ambientAudio.update(camera, player.feet, seagulls?.gulls, ROOM_FLOOR, TOWER_RADIUS); });
+  frameTask("sea", () => { sea.update(camera.position.y, dt); });
+  frameTask("door", () => { updateDoor(dt); });
+  frameTask("weather", () => { weather.update(dt, player.feet, walkMode); });
 
-  waterNormal.offset.x = (waterNormal.offset.x + dt * 0.012) % 1;
-  waterNormal.offset.y = (waterNormal.offset.y - dt * 0.008 + 1) % 1;
+  frameTask("water normals", () => { waterNormal.offset.x = (waterNormal.offset.x + dt * 0.012) % 1; });
+  frameTask("water normals", () => { waterNormal.offset.y = (waterNormal.offset.y - dt * 0.008 + 1) % 1; });
 
-  if (dayNight) dayNight.update(dt);
-  if (waterGraphics) waterGraphics.update(elapsed, dayNight ? dayNight.getDaylight() : 1, frameTime);
-
+  frameTask("dayNight", () => { if (dayNight) dayNight.update(dt); });
+  frameTask("waterGraphics", () => { if (waterGraphics) waterGraphics.update(elapsed, dayNight ? dayNight.getDaylight() : 1, frameTime); });
   renderer.render(scene, camera);
 }
 

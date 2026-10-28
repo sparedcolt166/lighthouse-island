@@ -198,7 +198,7 @@ export function createAmbientAudio() {
         console.warn("Wildlife audio unavailable", error);
       }
     },
-    getChain() { return context && master ? { context, master } : null; },
+    getChain() { return context && master ? { context, master, effects: effectsGain, music: musicGain } : null; },
     titleOutput() {
       try {
         if (!context && !initialize()) return null;

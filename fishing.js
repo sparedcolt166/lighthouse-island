@@ -254,6 +254,7 @@ export function buildFishing(scene, camera, dock, canvas, isWalking) {
   }
   function giveRod() { holding = true; held.visible = true; spare.visible = false; }
   return { update, canInteract, interact, giveRod,
+    closeOverlay() { if (state === "idle") return false; cancel(); return true; },
     reset() { putAway(); fishCount = 0; total = 0; deposited = 0; },
     getState: () => ({ fishCount, total, deposited }),
     setState(value) {

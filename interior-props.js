@@ -71,20 +71,20 @@ export function buildInteriorProps(group, floorY, ceilingY, azimuth, table, book
   const target = new THREE.Vector3(), direction = new THREE.Vector3(), view = new THREE.Vector3();
   function aimed(camera, object, range) { object.getWorldPosition(target); direction.subVectors(target, camera.position); const distance = direction.length(); camera.getWorldDirection(view); return distance < range && distance > 0 && view.dot(direction.normalize()) > 0.94; }
   function action(camera) { if (!overlay.hidden) return ""; if (aimed(camera, book, 1.8)) return "book"; if (aimed(camera, radio, 2.2)) return "radio"; return ""; }
-  function tone(context, master, frequency, duration, volume, type) { const osc = context.createOscillator(), gain = context.createGain(), now = context.currentTime; osc.type = type; osc.frequency.value = frequency; gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime(volume, now + 0.015); gain.gain.exponentialRampToValueAtTime(0.0001, now + duration); osc.connect(gain).connect(master); osc.start(now); osc.stop(now + duration); }
+  function tone(context, music, frequency, duration, volume, type) { const osc = context.createOscillator(), gain = context.createGain(), now = context.currentTime; osc.type = type; osc.frequency.value = frequency; gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime(volume, now + 0.015); gain.gain.exponentialRampToValueAtTime(0.0001, now + duration); osc.connect(gain).connect(master); osc.start(now); osc.stop(now + duration); }
   return {
     get open() { return !overlay.hidden; },
     prompt(camera) { try { const a = action(camera); return a === "book" ? "Read the keeper's log" : a === "radio" ? (radioOn ? "Turn off the radio" : "Turn on the radio") : ""; } catch { return ""; } },
     interact(camera) { const a = action(camera); if (a === "book") { overlay.hidden = false; onOpen(); render(); closeButton.focus(); } else if (a === "radio") { radioOn = !radioOn; dialMat.emissiveIntensity = radioOn ? 1.5 : 0; nextNote = 0; } },
-    key(event) { if (overlay.hidden) return false; event.preventDefault(); event.stopImmediatePropagation(); if (!event.repeat) { if (event.code === "Escape" || event.code === "KeyE") close(); else if (event.code === "ArrowLeft") prev.click(); else if (event.code === "ArrowRight") next.click(); } return true; },
+    key(event) { if (overlay.hidden || event.code === "KeyM") return false; event.preventDefault(); event.stopImmediatePropagation(); if (!event.repeat) { if (event.code === "Escape" || event.code === "KeyE") close(); else if (event.code === "ArrowLeft") prev.click(); else if (event.code === "ArrowRight") next.click(); } return true; },
     update(elapsed, camera, playing) { if (updateBroken) return; try {
       const flicker = 0.75 + 0.25 * Math.sin(elapsed * 11) * Math.sin(elapsed * 4.3); fireLight.intensity = 1.2 + flicker * 0.8; ember.emissiveIntensity = 1.3 + flicker; flame.scale.y = 0.25 + flicker * 0.08; secondFlame.scale.y = 0.22 + (1 - flicker) * 0.12;
       const puff = (elapsed % 7) / 7; steam.material.opacity = puff < 0.28 ? Math.sin(puff / 0.28 * Math.PI) * 0.32 : 0; steam.position.y = 1.04 + puff * 0.65; steam.scale.setScalar(0.12 + puff * 0.4);
       const chain = audio.getChain(); if (!playing || !chain || chain.context.state !== "running") return;
-      const { context, master } = chain; const distance = camera.position.distanceTo(stove.position);
-      if (distance < 4 && elapsed >= nextCrackle) { tone(context, master, 95 + Math.random() * 150, 0.045, 0.004 * (1 - distance / 4), "square"); nextCrackle = elapsed + 0.12 + Math.random() * 0.5; }
+      const { context, effects, music } = chain; const distance = camera.position.distanceTo(stove.position);
+      if (distance < 4 && elapsed >= nextCrackle) { tone(context, effects, 95 + Math.random() * 150, 0.045, 0.004 * (1 - distance / 4), "square"); nextCrackle = elapsed + 0.12 + Math.random() * 0.5; }
       radio.getWorldPosition(target); const radioDistance = camera.position.distanceTo(target);
-      if (radioOn && radioDistance < 6 && elapsed >= nextNote) { const melody = [196, 247, 294, 294, 330, 294, 247, 196, 220, 247, 196, 165, 196, 0, 196, 0]; const frequency = melody[noteIndex++ % melody.length]; if (frequency) tone(context, master, frequency, 0.35, 0.012 * (1 - radioDistance / 6), "triangle"); nextNote = elapsed + 0.4; }
+      if (radioOn && radioDistance < 6 && elapsed >= nextNote) { const melody = [196, 247, 294, 294, 330, 294, 247, 196, 220, 247, 196, 165, 196, 0, 196, 0]; const frequency = melody[noteIndex++ % melody.length]; if (frequency) tone(context, music, frequency, 0.35, 0.012 * (1 - radioDistance / 6), "triangle"); nextNote = elapsed + 0.4; }
     } catch (error) { updateBroken = true; console.warn("Interior animation or audio unavailable", error); } },
   };
 }

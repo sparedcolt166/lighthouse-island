@@ -112,7 +112,7 @@ export function buildLanternGallery(scene, model, groundTargets, azimuth, upperF
     const side = player.feet.x * oz - player.feet.z * ox;
     camera.getWorldDirection(view);
     if (player.feet.y >= floorY - 0.15 && player.feet.y < floorY + 0.3 && Math.hypot(player.feet.x - hx, player.feet.z - hz) < 1 && view.y < -0.2 && view.x * ox + view.z * oz > 0.2) return "Climb down";
-    if (player.feet.y >= upperFloor - 0.2 && player.feet.y < upperFloor + 0.4 && Math.abs(side) < 0.5 && radial > 0.35 && radial < 1.4) return "Climb up";
+    if (player.feet.y >= upperFloor - 0.2 && player.feet.y < upperFloor + 0.4 && Math.abs(side) < 0.5 && radial > 0.35 && radial < 1.4 && view.x * ox + view.z * oz > 0.35) return "Climb up";
     return "";
   }
   return {

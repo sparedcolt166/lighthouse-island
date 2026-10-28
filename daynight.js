@@ -169,6 +169,7 @@ export function buildDayNight({ scene, skyMaterial, sunSprite, sunLight, hemisph
     setState(value) { if (typeof value === "number" && Number.isFinite(value) && value >= 0 && value < 1) { phase = value; skyTimer = 1; update(0); } },
     getDaylight: () => daylight,
     isLampLit: () => lampLit,
+    setLampLit(value) { if (typeof value === "boolean") { lampLit = value; update(0); } },
     lightLamp: () => { lampLit = true; },
     getSkyColor: () => skyColor,
     getFogColor: () => scene.fog.color,

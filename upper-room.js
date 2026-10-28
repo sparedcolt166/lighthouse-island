@@ -147,7 +147,7 @@ export function buildUpperRoom(scene, groundTargets, azimuth, floorY, ceilingY) 
     if (player.feet.y >= ceilingY - 0.15 && player.feet.y < ceilingY + 0.3 &&
         Math.hypot(player.feet.x - hatchX, player.feet.z - hatchZ) < 1.05 &&
         direction.y < -0.2 && direction.x * outwardX + direction.z * outwardZ > 0.2) return "Climb down";
-    if (player.feet.y < ceilingY - 0.4 && Math.abs(sideways) < 0.55 && radial > 0.65 && radial < 1.5) return "Climb the ladder";
+    if (player.feet.y < ceilingY - 0.4 && Math.abs(sideways) < 0.55 && radial > 0.65 && radial < 1.5 && direction.x * outwardX + direction.z * outwardZ > 0.35) return "Climb the ladder";
     return "";
   }
   return {

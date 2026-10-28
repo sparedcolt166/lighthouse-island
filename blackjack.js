@@ -173,7 +173,7 @@ export function buildBlackjack(scene, azimuth, floorY, onOpen, onClose) {
     getState: () => ({ balance }),
     setState(value) { if (value && Number.isFinite(value.balance) && value.balance >= 0 && value.balance <= 100000000) { balance = value.balance; bet = Math.max(1, Math.min(10, balance)); render(); } },
     get open() { return active; },
-    canInteract(camera) { const dx = camera.position.x - Math.sin(angle) * -0.65, dz = camera.position.z - Math.cos(angle) * -0.65; return Math.abs(camera.position.y - (floorY + 1.6)) < 1 && Math.hypot(dx, dz) < 1.5; },
+    canInteract(camera) { const dx = camera.position.x - Math.sin(angle) * -0.65, dz = camera.position.z - Math.cos(angle) * -0.65; const view = camera.getWorldDirection(new THREE.Vector3()); const distance = Math.hypot(dx, dz); return Math.abs(camera.position.y - (floorY + 1.6)) < 1 && distance < 1.5 && distance > 0.01 && (view.x * -dx + view.z * -dz) / distance > 0.55; },
     interact(camera) {
       if (active) return; active = true; savedPosition.copy(camera.position); savedRotation.copy(camera.quaternion);
       group.updateMatrixWorld(true); seatPosition.copy(group.localToWorld(new THREE.Vector3(0, 1.3, 0.1)));
