@@ -23,6 +23,7 @@ import { buildDayNight } from "./daynight.js";
 import { createWeather } from "./weather.js";
 import { buildBlackjack } from "./blackjack.js";
 import { buildWildlife } from "./wildlife.js";
+import { buildInteriorProps } from "./interior-props.js";
 
 // ---------------------------------------------------------------------------
 // Page bits
@@ -419,6 +420,7 @@ let doorAzimuth = Math.PI / 4;
 let interiorGroup = null;
 let upperRoom = null;
 let blackjack = null;
+let interiorProps = null;
 
 const cameraEuler = new THREE.Euler(0, 0, 0, "YXZ");
 const moveDirection = new THREE.Vector3();
@@ -543,6 +545,7 @@ function resetPlayer() {
 // ---------------------------------------------------------------------------
 
 window.addEventListener("keydown", (event) => {
+  if (interiorProps && interiorProps.key(event)) return;
   if (blackjack && blackjack.key(event)) return;
   if (event.code === "Escape" && walkMode && !pointerLook) {
     pauseWalkabout();
@@ -573,6 +576,7 @@ window.addEventListener("keydown", (event) => {
     else if (brunson && brunson.canInteract(camera)) brunson.interact();
     else if (upperRoom && upperRoom.prompt(player, camera)) upperRoom.interact(player, camera);
     else if (blackjack && blackjack.canInteract(camera)) blackjack.interact();
+    else if (interiorProps && interiorProps.prompt(camera)) interiorProps.interact(camera);
     else if (tinny && tinny.canInteract(camera)) tinny.interact(player, camera);
   }
   if (event.code === "KeyR" && walkMode) resetPlayer();
@@ -598,7 +602,7 @@ window.addEventListener("blur", () => {
 // ---------------------------------------------------------------------------
 
 function updatePlayer(dt) {
-  if (!walkMode || !player.ready || blackjack?.open) return;
+  if (!walkMode || !player.ready || blackjack?.open || interiorProps?.open) return;
 
   cameraEuler.setFromQuaternion(camera.quaternion);
   if (testSetup) {
@@ -1395,6 +1399,11 @@ function buildInterior(floorY, roomRadius) {
   crateSmall.castShadow = true;
   crate.add(crateSmall);
 
+  interiorProps = buildInteriorProps(group, floorY, ceilingY, azimuth, table, book, shelf, colliders, ambientAudio, () => {
+    keys.clear(); jumpQueued = false;
+    if (document.pointerLockElement) document.exitPointerLock();
+  }, () => { keys.clear(); enableDragLook(true); });
+
   upperRoom = buildUpperRoom(scene, groundTargets, azimuth, floorY, ceilingY);
   blackjack = buildBlackjack(scene, azimuth, ceilingY, () => {
     keys.clear(); jumpQueued = false;
@@ -1517,13 +1526,14 @@ function updateDoor(dt) {
   const fishingAction = walkMode && !near && fishing && fishing.canInteract(camera);
   const nearFisherman = walkMode && !near && !fishingAction && fisherman && fisherman.canInteract(camera);
   const nearBrunson = walkMode && !near && !fishingAction && !nearFisherman && brunson && brunson.canInteract(camera);
-  const ladderPrompt = walkMode && !near && upperRoom ? upperRoom.prompt(player, camera) : "";
-  const nearBlackjack = walkMode && !near && !ladderPrompt && blackjack && !blackjack.open && blackjack.canInteract(camera);
+  const ladderPrompt = walkMode && !near && !fishingAction && !nearFisherman && !nearBrunson && upperRoom ? upperRoom.prompt(player, camera) : "";
+  const nearBlackjack = walkMode && !near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && blackjack && !blackjack.open && blackjack.canInteract(camera);
+  const interiorPrompt = walkMode && !near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && !nearBlackjack && interiorProps ? interiorProps.prompt(camera) : "";
   // The boat is moored right beside the fisherman, so it only takes the
   // prompt first while rowing; on foot, whatever you're looking at wins.
   const rowing = tinny && tinny.isRowing();
-  const nearTinny = walkMode && tinny && (rowing || (!near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && !nearBlackjack)) && tinny.canInteract(camera);
-  interact.classList.toggle("visible", !!(near || fishingAction || nearFisherman || nearBrunson || ladderPrompt || nearBlackjack || nearTinny));
+  const nearTinny = walkMode && tinny && (rowing || (!near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && !nearBlackjack && !interiorPrompt)) && tinny.canInteract(camera);
+  interact.classList.toggle("visible", !!(near || fishingAction || nearFisherman || nearBrunson || ladderPrompt || nearBlackjack || interiorPrompt || nearTinny));
   interact.querySelector("kbd").hidden = !rowing && !near && !fishingAction && !nearFisherman && !nearBrunson && ladderPrompt.startsWith("W/S");
   if (rowing && nearTinny) interactLabel.textContent = "Leave the boat";
   else if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
@@ -1532,6 +1542,7 @@ function updateDoor(dt) {
   else if (nearBrunson) interactLabel.textContent = "Talk to Jalen";
   else if (ladderPrompt) interactLabel.textContent = ladderPrompt;
   else if (nearBlackjack) interactLabel.textContent = "Play blackjack";
+  else if (interiorPrompt) interactLabel.textContent = interiorPrompt;
   else if (nearTinny) interactLabel.textContent = "Row the boat";
 }
 
@@ -1622,7 +1633,7 @@ controls.addEventListener("lock", () => {
 });
 
 controls.addEventListener("unlock", () => {
-  if (!walkMode || blackjack?.open) return;
+  if (!walkMode || blackjack?.open || interiorProps?.open) return;
   pointerLook = false;
   pauseWalkabout();
 });
@@ -1701,6 +1712,7 @@ function animate() {
   if (brunsonShrine) brunsonShrine.update(elapsed);
   if (fishing) fishing.update(dt, elapsed);
   if (blackjack) blackjack.update(elapsed, camera);
+  if (interiorProps) interiorProps.update(elapsed, camera, walkMode);
   if (tinny) tinny.update(elapsed);
   if (seagulls) seagulls.update(dt, elapsed, player.feet);
   if (ships) ships.update(dt, elapsed);

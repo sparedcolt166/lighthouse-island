@@ -191,6 +191,7 @@ export function createAmbientAudio() {
         console.warn("Wildlife audio unavailable", error);
       }
     },
+    getChain() { return context && master ? { context, master } : null; },
     movementSound(action, ...args) {
       try {
         if (footsteps) footsteps[action](...args);

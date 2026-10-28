@@ -459,3 +459,12 @@ kbd {
 .blackjack-controls { display: flex; flex-wrap: wrap; gap: 8px; }
 .blackjack-controls button { padding: 10px 14px; border: 1px solid var(--line); background: #173944; color: var(--cream); cursor: pointer; }
 .blackjack-controls button:disabled { opacity: 0.4; cursor: default; }
+
+.logbook-overlay { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: rgba(3, 13, 18, 0.8); }
+.logbook-overlay[hidden] { display: none; }
+.logbook-panel { width: min(570px, 100%); padding: 32px; border: 2px solid #765838; background: #e2d2ad; color: #3b2d20; box-shadow: 0 30px 100px #0009; }
+.logbook-panel h2 { margin: 0 0 18px; font: 2rem var(--serif); }
+.logbook-page { min-height: 7em; font: 1.15rem/1.7 var(--serif); }
+.logbook-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.logbook-controls button { padding: 10px 14px; border: 1px solid #765838; background: #f0e2c2; color: #3b2d20; cursor: pointer; }
+.logbook-controls button:disabled { opacity: 0.4; cursor: default; }
