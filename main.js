@@ -1442,7 +1442,7 @@ function updateDoor(dt) {
   const nearFisherman = walkMode && !near && fisherman && fisherman.canInteract(camera);
   interact.classList.toggle("visible", !!(near || nearFisherman));
   if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
-  else if (nearFisherman) interactLabel.textContent = "Talk to the fisherman";
+  else if (nearFisherman) interactLabel.textContent = "Bother the fisherman";
 }
 
 // ---------------------------------------------------------------------------

@@ -67,6 +67,29 @@ export function buildFisherman(dock, colliders) {
   for (const side of [-1, 1]) {
     mesh(head, sphere, boots, [side * 0.09, 0.29, 0.213], [0.022, 0.025, 0.015]);
   }
+  // A short cigarette sits in front of the beard and follows every head turn.
+  const cigarette = joint(head, 0.09, 0.12, 0.275);
+  cigarette.rotation.x = Math.PI / 2 - 0.18;
+  mesh(cigarette, cylinder, white, [0, 0.07, 0], [0.012, 0.14, 0.012]);
+  const emberMaterial = new THREE.MeshBasicMaterial({ color: 0xb94a17 });
+  mesh(cigarette, cylinder, emberMaterial, [0, 0.145, 0], [0.012, 0.012, 0.012]);
+
+  const smokeCanvas = document.createElement("canvas");
+  smokeCanvas.width = smokeCanvas.height = 32;
+  const smokeContext = smokeCanvas.getContext("2d");
+  const gradient = smokeContext.createRadialGradient(16, 16, 0, 16, 16, 16);
+  gradient.addColorStop(0, "rgba(225,225,215,0.5)");
+  gradient.addColorStop(1, "rgba(225,225,215,0)");
+  smokeContext.fillStyle = gradient;
+  smokeContext.fillRect(0, 0, 32, 32);
+  const smokeTexture = new THREE.CanvasTexture(smokeCanvas);
+  const smoke = Array.from({ length: 6 }, () => {
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: smokeTexture, transparent: true, depthWrite: false, opacity: 0,
+    }));
+    head.add(sprite);
+    return sprite;
+  });
   const hatJoint = joint(head, 0, 0.43, 0);
   mesh(hatJoint, cylinder, hat, [0, 0.06, 0], [0.24, 0.16, 0.24]);
   mesh(hatJoint, cylinder, hat, [0, -0.015, 0], [0.30, 0.045, 0.30]);
@@ -144,18 +167,73 @@ export function buildFisherman(dock, colliders) {
   let idleStart = -100;
   let idleType = 0;
   let look = 0;
-  let grovelTime = -1;
-  let grovelFacing = 0;
+  let groanTime = -1;
+  let groanDuration = 1.3;
+  let groanFacing = 0;
+  let audioContext = null;
   const dialogue = [
-    "Forgive me, keeper of the light!",
-    "Oh, mighty keeper, we are not worthy!",
-    "The sea itself bows before you!",
-    "Mercy, glorious guardian of the lamp!",
+    "Hrrmph. You're scaring the fish.",
+    "Uuurgh... what now?",
+    "Can't a man fish in peace?",
+    "Hrrmmph. Go bother the seagulls.",
   ];
+  function playGroan(duration) {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      if (!audioContext) audioContext = new AudioContext();
+      const context = audioContext;
+      if (context.state === "suspended") context.resume().catch(() => {});
+      const now = context.currentTime;
+      const voice = context.createOscillator();
+      const vibrato = context.createOscillator();
+      const wobble = context.createGain();
+      const formant = context.createBiquadFilter();
+      const volume = context.createGain();
+      voice.type = "sawtooth";
+      const pitch = 105 + random() * 24;
+      voice.frequency.setValueAtTime(pitch, now);
+      voice.frequency.exponentialRampToValueAtTime(pitch * 0.68, now + duration);
+      vibrato.frequency.value = 6;
+      wobble.gain.value = 3;
+      vibrato.connect(wobble).connect(voice.frequency);
+      formant.type = "lowpass";
+      formant.frequency.setValueAtTime(650, now);
+      formant.frequency.linearRampToValueAtTime(340, now + duration);
+      formant.Q.value = 4;
+      volume.gain.setValueAtTime(0.0001, now);
+      volume.gain.exponentialRampToValueAtTime(0.12, now + 0.12);
+      volume.gain.setValueAtTime(0.12, now + duration * 0.65);
+      volume.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      voice.connect(formant).connect(volume).connect(context.destination);
+      // Filtered breath gives the pitched voice a rough, exasperated edge.
+      const noiseBuffer = context.createBuffer(1, Math.ceil(context.sampleRate * duration), context.sampleRate);
+      const samples = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < samples.length; i += 1) samples[i] = random() * 2 - 1;
+      const noise = context.createBufferSource();
+      const noiseFilter = context.createBiquadFilter();
+      const noiseGain = context.createGain();
+      noise.buffer = noiseBuffer;
+      noiseFilter.type = "bandpass";
+      noiseFilter.frequency.value = 700;
+      noiseGain.gain.setValueAtTime(0.0001, now);
+      noiseGain.gain.linearRampToValueAtTime(0.025, now + 0.15);
+      noiseGain.gain.linearRampToValueAtTime(0.0001, now + duration);
+      noise.connect(noiseFilter).connect(noiseGain).connect(context.destination);
+      voice.start(now);
+      vibrato.start(now);
+      noise.start(now);
+      voice.stop(now + duration);
+      vibrato.stop(now + duration);
+      noise.stop(now + duration);
+    } catch (error) {
+      // Audio is optional; an unavailable device must not interrupt interaction.
+    }
+  }
   const facing = new THREE.Vector3();
   const toFisherman = new THREE.Vector3();
   function canInteract(camera) {
-    if (grovelTime >= 0) return false;
+    if (groanTime >= 0) return false;
     toFisherman.set(world.x - camera.position.x, 0, world.z - camera.position.z);
     const distance = toFisherman.length();
     if (distance > 2.8 || distance < 0.01) return false;
@@ -165,11 +243,13 @@ export function buildFisherman(dock, colliders) {
     return facing.dot(toFisherman) / distance > 0.77;
   }
   function interact(playerPosition) {
-    if (grovelTime >= 0) return;
+    if (groanTime >= 0) return;
     playerLocal.copy(playerPosition);
     dock.group.worldToLocal(playerLocal);
-    grovelFacing = Math.atan2(playerLocal.x - x, playerLocal.z - (dock.deckEnd - 0.31));
-    grovelTime = 0;
+    groanFacing = Math.atan2(playerLocal.x - x, playerLocal.z - (dock.deckEnd - 0.31));
+    groanTime = 0;
+    groanDuration = 1.1 + random() * 0.4;
+    playGroan(groanDuration);
     showToast(dialogue[Math.floor(random() * dialogue.length)], 4000);
   }
   const smooth = (t) => { t = THREE.MathUtils.clamp(t, 0, 1); return t * t * (3 - 2 * t); };
@@ -211,30 +291,28 @@ export function buildFisherman(dock, colliders) {
     const targetLook = near ? THREE.MathUtils.clamp(Math.atan2(dx, dz), -2.5, 2.5) : (idleType === 0 ? idle * 0.65 : 0);
     look = THREE.MathUtils.damp(look, targetLook, TUNING.lookEase, delta);
     head.rotation.y = look;
-    if (grovelTime >= 0) {
-      grovelTime += delta;
-      if (grovelTime >= 6.5) grovelTime = -1;
+    if (groanTime >= 0) {
+      groanTime += delta;
+      if (groanTime >= groanDuration + 0.5) groanTime = -1;
     }
-    // Rise, kneel and bow before reversing the transition back to the seat.
-    const active = grovelTime >= 0;
-    const turn = active ? smooth(grovelTime / 0.7) * (1 - smooth((grovelTime - 5.6) / 0.9)) : 0;
-    const kneel = active ? smooth((grovelTime - 0.55) / 0.65) * (1 - smooth((grovelTime - 5.15) / 0.6)) : 0;
-    const bow = kneel * (0.5 + 0.5 * Math.sin((grovelTime - 1.2) * 5));
-    hips.rotation.y = grovelFacing * turn;
-    // Seated thighs point forward; swinging them straight down stands him up,
-    // and folding the shins back flat on the planks drops him onto his knees.
-    // Hip heights come from the leg lengths: 0.68m standing, 0.31m kneeling.
-    hips.position.y = dock.deckY + turn * (0.68 - kneel * 0.37);
-    torso.rotation.x = bow * 1.05;
-    head.rotation.y = look * (1 - turn);
-    head.rotation.x += bow * 0.18;
+    const reaction = groanTime >= 0 ? envelope(groanTime / (groanDuration + 0.5)) : 0;
+    const wave = reaction * Math.sin(groanTime * 9);
+    torso.rotation.x = reaction * 0.15;
+    head.rotation.y = THREE.MathUtils.lerp(look, THREE.MathUtils.clamp(groanFacing, -2.5, 2.5), reaction);
+    head.rotation.x += reaction * 0.12;
     legs.forEach((leg, index) => {
-      leg.upper.rotation.x = turn * Math.PI / 2;
-      leg.lower.rotation.x = (1 - turn) * Math.sin(elapsed * TUNING.legSpeed + index * 1.3) * TUNING.legSwing - turn * (1 - kneel) * Math.PI / 2;
+      leg.lower.rotation.x = Math.sin(elapsed * TUNING.legSpeed + index * 1.3) * TUNING.legSwing;
     });
-    rod.visible = !active;
-    line.visible = !active;
-    float.visible = !active;
+    // Recycle a few soft puffs; their slow sideways drift suggests the sea breeze.
+    smoke.forEach((sprite, index) => {
+      const age = (elapsed * 0.38 + index / smoke.length) % 1;
+      sprite.position.set(0.09 + age * 0.14 + Math.sin(elapsed * 0.8 + index) * age * 0.025,
+        0.14 + age * 0.48, 0.42);
+      const size = 0.035 + age * 0.12;
+      sprite.scale.set(size, size, 1);
+      sprite.material.opacity = Math.sin(age * Math.PI) * 0.32;
+    });
+    emberMaterial.color.setHex(Math.sin(elapsed * 0.4) > 0.94 ? 0xff8427 : 0xb94a17);
     const nibble = idleType === 3 ? idle * Math.sin(Math.PI * smooth((progress - 0.32) / 0.35)) : 0;
     rod.rotation.x = TUNING.rodAngle + Math.sin(elapsed * 0.7) * TUNING.rodSway - nibble * 0.30;
     rod.rotation.z = Math.sin(elapsed * 0.5) * TUNING.rodSway;
@@ -246,8 +324,8 @@ export function buildFisherman(dock, colliders) {
       torso.worldToLocal(a);
       if (index === 1 && idleType === 2) a.lerp(c.set(0.22, 0.92, 0.16), idle);
       if (index === 1 && idleType === 1) a.lerp(c.set(0.55, 0.85, 0.30), idle);
-      if (turn > 0) a.lerp(c.set(arm.side * 0.48, 0.55 + bow * 0.55, 0.52), turn);
-      b.set(arm.side * 0.36, 0.30 + bow * 0.22, 0.20).lerp(a, 0.25);
+      if (index === 1 && reaction > 0) a.lerp(c.set(0.48 + wave * 0.08, 0.66, 0.42), reaction);
+      b.set(arm.side * 0.36, 0.30, 0.20).lerp(a, 0.25);
       const shoulderPos = arm.shoulder.position;
       const upperLength = orient(arm.shoulder, arm.upperMesh, c.copy(b).sub(shoulderPos));
       arm.elbow.position.set(0, -upperLength, 0);
