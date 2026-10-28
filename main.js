@@ -21,6 +21,7 @@ import { buildUpperRoom } from "./upper-room.js";
 import { buildDayNight } from "./daynight.js";
 import { createWeather } from "./weather.js";
 import { buildBlackjack } from "./blackjack.js";
+import { buildWildlife } from "./wildlife.js";
 
 // ---------------------------------------------------------------------------
 // Page bits
@@ -270,6 +271,9 @@ const waterMaterial = new THREE.MeshPhysicalMaterial({
   normalScale: new THREE.Vector2(0.2, 0.2),
   envMapIntensity: 0.9,
   side: THREE.DoubleSide,
+  transparent: true,
+  opacity: 0.82,
+  depthWrite: false,
 });
 const water = new THREE.Mesh(new THREE.PlaneGeometry(900, 900, 1, 1), waterMaterial);
 water.rotation.x = -Math.PI / 2;
@@ -376,6 +380,7 @@ let lastGroundHit = null;
 const sea = createWaterSystem(scene, groundTargets);
 let islands = null;
 let headland = null;
+let wildlife = null;
 let dock = null;
 let fisherman = null;
 let brunson = null;
@@ -1429,6 +1434,8 @@ function onModelLoaded(gltf) {
   islands = buildIslands(scene, groundTargets, colliders, sampleGround);
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
   headland = buildHeadland(scene, groundTargets, colliders, sampleGround);
+  try { wildlife = buildWildlife(scene, sampleGround, (position) => ambientAudio.wildlifeSplash(position)); }
+  catch (error) { console.warn("Wildlife unavailable", error); }
   fisherman = buildFisherman(dock, colliders);
   brunson = buildBrunson(dock, colliders, sampleGround);
   fishing = buildFishing(scene, camera, dock, canvas, () => walkMode);
@@ -1692,6 +1699,7 @@ function animate() {
   if (ships) ships.update(dt, elapsed);
   if (islands) islands.update(elapsed);
   if (headland) headland.update(elapsed);
+  if (wildlife) wildlife.update(dt, elapsed, player.feet, dayNight ? dayNight.getDaylight() : 1);
   if (walkMode) ambientAudio.update(camera, player.feet, seagulls?.gulls, ROOM_FLOOR, TOWER_RADIUS);
   sea.update(camera.position.y, dt);
   updateDoor(dt);

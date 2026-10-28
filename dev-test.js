@@ -14,6 +14,9 @@ export function getTestSetup({ dock, tinny, doorAzimuth, roomFloor, spawn, spawn
   if (scenario === "headland") {
     return { position: new THREE.Vector3(-18, 1.5, -7), lookAt: new THREE.Vector3(-24, 2, -8) };
   }
+  if (scenario === "wildlife") {
+    return { position: new THREE.Vector3(7, 1, 71), lookAt: new THREE.Vector3(5.5, 0.5, 72.7) };
+  }
   if (scenario === "fishing") {
     return {
       position: dock.group.localToWorld(new THREE.Vector3(-0.8, dock.deckY, dock.deckEnd - 3)),
