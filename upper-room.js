@@ -82,7 +82,13 @@ export function buildUpperRoom(scene, groundTargets, azimuth, floorY, ceilingY) 
     crossbar.position.y = y;
     windowFrame.add(crossbar);
   }
-  const roof = new THREE.Mesh(new THREE.CircleGeometry(1.57, 40), wood);
+  const roofShape = new THREE.Shape();
+  roofShape.absarc(0, 0, 1.57, 0, Math.PI * 2, false);
+  const roofHole = new THREE.Path();
+  const secondAngle = angle - Math.PI / 2;
+  roofHole.absarc(Math.sin(secondAngle) * 0.9, Math.cos(secondAngle) * 0.9, 0.4, 0, Math.PI * 2, true);
+  roofShape.holes.push(roofHole);
+  const roof = new THREE.Mesh(new THREE.ShapeGeometry(roofShape, 40), wood);
   roof.position.y = ceilingY + 3.1;
   roof.rotation.x = Math.PI / 2;
   group.add(roof);
@@ -141,7 +147,7 @@ export function buildUpperRoom(scene, groundTargets, azimuth, floorY, ceilingY) 
     if (player.feet.y >= ceilingY - 0.15 && player.feet.y < ceilingY + 0.3 &&
         Math.hypot(player.feet.x - hatchX, player.feet.z - hatchZ) < 1.05 &&
         direction.y < -0.2 && direction.x * outwardX + direction.z * outwardZ > 0.2) return "Climb down";
-    if (player.feet.y < ceilingY - 0.4 && Math.abs(sideways) < 0.55 && radial > 0.65 && radial < 1.5) return "Climb the ladder";
+    if (player.feet.y < ceilingY - 0.4 && Math.abs(sideways) < 0.55 && radial > 0.65 && radial < 1.5 && direction.x * outwardX + direction.z * outwardZ > 0.35) return "Climb the ladder";
     return "";
   }
   return {

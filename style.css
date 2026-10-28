@@ -454,8 +454,41 @@ kbd {
 .blackjack-overlay[hidden] { display: none; }
 .blackjack-panel { width: min(570px, 100%); padding: 32px; border: 1px solid var(--line); background: #0b232c; box-shadow: 0 30px 100px #0009; }
 .blackjack-panel h2 { margin: 0 0 18px; font: 2rem var(--serif); color: var(--gold); }
-.blackjack-status { color: var(--gold); }
+.blackjack-overlay .blackjack-status { color: var(--gold); }
 .blackjack-cards { min-height: 2em; padding: 14px; background: #194c39; font-size: 1.2rem; }
-.blackjack-controls { display: flex; flex-wrap: wrap; gap: 8px; }
-.blackjack-controls button { padding: 10px 14px; border: 1px solid var(--line); background: #173944; color: var(--cream); cursor: pointer; }
-.blackjack-controls button:disabled { opacity: 0.4; cursor: default; }
+.blackjack-overlay .blackjack-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.blackjack-overlay .blackjack-controls button { padding: 10px 14px; border: 1px solid var(--line); background: #173944; color: var(--cream); cursor: pointer; }
+.blackjack-overlay .blackjack-controls button:disabled { opacity: 0.4; cursor: default; }
+
+.logbook-overlay { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: rgba(3, 13, 18, 0.8); }
+.logbook-overlay[hidden] { display: none; }
+.logbook-panel { width: min(570px, 100%); padding: 32px; border: 2px solid #765838; background: #e2d2ad; color: #3b2d20; box-shadow: 0 30px 100px #0009; }
+.logbook-panel h2 { margin: 0 0 18px; font: 2rem var(--serif); }
+.logbook-page { min-height: 7em; font: 1.15rem/1.7 var(--serif); }
+.logbook-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.logbook-controls button { padding: 10px 14px; border: 1px solid #765838; background: #f0e2c2; color: #3b2d20; cursor: pointer; }
+.logbook-controls button:disabled { opacity: 0.4; cursor: default; }
+.blackjack-hud { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 10; width: min(760px, calc(100% - 24px)); padding: 12px 16px; box-sizing: border-box; color: #f7efda; background: rgba(9, 18, 19, 0.88); border-top: 2px solid #d5b879; box-shadow: 0 8px 28px #0009; font: 14px sans-serif; }
+.blackjack-hud[hidden] { display: none; }
+.blackjack-status { color: #e5c987; font-weight: bold; letter-spacing: .04em; }
+.blackjack-message { margin: 7px 0; }
+.blackjack-controls { display: flex; flex-wrap: wrap; gap: 5px; }
+.blackjack-controls button { padding: 5px 8px; border: 1px solid #8d8066; background: #273332; color: #f7efda; cursor: pointer; font: inherit; }
+.blackjack-controls button:hover, .blackjack-controls button:focus-visible { background: #52614e; }
+/* The pause card is separate from the flyover title card. */
+#overlay.paused { align-items: center; justify-content: center; background: rgba(3, 13, 18, 0.72); }
+#overlay.paused > .panel, #overlay.paused > .credit { display: none; }
+.pause-panel { width: min(620px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: clamp(24px, 4vw, 42px); border: 1px solid var(--line); background: linear-gradient(150deg, #102f39, #071a22); box-shadow: 0 30px 100px #0009; }
+.pause-panel[hidden], .pause-details[hidden] { display: none; }
+.pause-panel h2 { margin: 0 0 24px; color: var(--cream); font: 400 clamp(32px, 5vw, 48px) var(--serif); }
+.pause-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pause-actions button { padding: 11px 14px; border: 1px solid var(--line); background: transparent; color: var(--cream); cursor: pointer; font: 600 11px var(--sans); letter-spacing: .06em; }
+.pause-actions button:first-child { background: var(--cream); color: var(--ink); }
+.pause-actions button:hover { border-color: var(--gold); }
+.pause-panel :focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.pause-details { display: grid; gap: 12px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--cream-dim); font-size: 13px; }
+.pause-details label { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.pause-details input[type=range] { width: min(50%, 220px); accent-color: var(--gold); }
+.pause-details input[type=checkbox] { accent-color: var(--gold); }
+.pause-details select { padding: 6px; border: 1px solid var(--line); color: var(--cream); background: var(--ink-soft); }
+.controls-list span { display: flex; align-items: center; gap: 10px; }

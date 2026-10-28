@@ -3,16 +3,19 @@ import { PointerLockControls } from "./vendor/controls/PointerLockControls.js";
 import { GLTFLoader } from "./vendor/loaders/GLTFLoader.js";
 import { buildDock } from "./dock.js";
 import { buildIslands } from "./islands.js";
+import { buildHeadland } from "./headland.js";
 import { buildFisherman } from "./fisherman.js";
-import { buildBrunson } from "./brunson.js";
+import { buildBrunson, buildBrunsonShrine } from "./brunson.js";
 import { buildFishing } from "./fishing.js";
 import { buildTinny } from "./tinny.js";
 import { buildSeagulls } from "./seagulls.js";
 import { buildShips } from "./ships.js";
 import { createAmbientAudio } from "./audio.js";
+import { createTitleMusic } from "./title-music.js";
 import { getTestSetup, isRainTest } from "./dev-test.js";
 import { settleGround } from "./ground.js";
 import { createWaterSystem } from "./water.js";
+import { createWaterGraphics, setQuality, getQuality } from "./water-graphics.js";
 import { showToast } from "./toast.js";
 import { createAttractCamera } from "./attract.js";
 import { createBookCover } from "./book-cover.js";
@@ -20,6 +23,11 @@ import { buildUpperRoom } from "./upper-room.js";
 import { buildDayNight } from "./daynight.js";
 import { createWeather } from "./weather.js";
 import { buildBlackjack } from "./blackjack.js";
+import { buildWildlife } from "./wildlife.js";
+import { buildInteriorProps } from "./interior-props.js";
+import { buildLanternGallery } from "./lantern-gallery.js";
+import { createSettings } from "./settings.js";
+import { readSave, writeSave, clearSave } from "./save.js";
 
 // ---------------------------------------------------------------------------
 // Page bits
@@ -35,6 +43,7 @@ const lookHint = document.querySelector("#look-hint");
 const interact = document.querySelector("#interact");
 const interactLabel = document.querySelector("#interact-label");
 const startPrompt = document.querySelector("#start-prompt");
+const pauseMenu = document.querySelector("#pause-menu");
 
 // The Blender scene was modelled at roughly half human scale (the front door is
 // only 0.76m tall). Scale the whole island up so a normal-sized person can walk
@@ -269,6 +278,9 @@ const waterMaterial = new THREE.MeshPhysicalMaterial({
   normalScale: new THREE.Vector2(0.2, 0.2),
   envMapIntensity: 0.9,
   side: THREE.DoubleSide,
+  transparent: true,
+  opacity: 0.82,
+  depthWrite: false,
 });
 const water = new THREE.Mesh(new THREE.PlaneGeometry(900, 900, 1, 1), waterMaterial);
 water.rotation.x = -Math.PI / 2;
@@ -374,17 +386,22 @@ const groundTargets = [];
 let lastGroundHit = null;
 const sea = createWaterSystem(scene, groundTargets);
 let islands = null;
+let headland = null;
+let wildlife = null;
 let dock = null;
 let fisherman = null;
 let brunson = null;
+let brunsonShrine = null;
 let fishing = null;
 let tinny = null;
 let seagulls = null;
 let ships = null;
 const ambientAudio = createAmbientAudio();
-const weather = createWeather(scene, camera, cloudMaterial, sampleGround, ROOM_FLOOR, TOWER_RADIUS, isRainTest());
+const titleMusic = createTitleMusic(ambientAudio);
+const weather = createWeather(scene, camera, cloudMaterial, sampleGround, ROOM_FLOOR, TOWER_RADIUS, isRainTest(), ambientAudio);
 let testSetup = null;
 let dayNight = null;
+let waterGraphics = null;
 const keys = new Set();
 let jumpQueued = false;
 let model = null;
@@ -395,6 +412,45 @@ let pointerLockBlocked = false;
 let dragging = false;
 let lastPointerX = 0;
 let lastPointerY = 0;
+let settings;
+function applySettings(values) {
+  controls.pointerSpeed = 0.9 * values.sensitivity;
+  camera.fov = values.fov;
+  camera.updateProjectionMatrix();
+  const cap = values.quality === "low" ? 1 : values.quality === "medium" ? 1.5 : 2;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap));
+  renderer.shadowMap.enabled = values.quality !== "low";
+  renderer.shadowMap.needsUpdate = true;
+  setQuality(values.quality);
+  ambientAudio.setVolumes(values);
+  weather.setVolume(1);
+}
+settings = createSettings(applySettings);
+
+function saveProgress() {
+  if (!player.started || testSetup) return;
+  try {
+    writeSave({ position: player.feet.toArray(), rotation: camera.quaternion.toArray(),
+      time: dayNight?.getState(), lampLit: dayNight?.isLampLit(), blackjack: blackjack?.getState(), fishing: fishing?.getState(), muted: ambientAudio.getMuted() });
+  } catch (error) { console.warn("Could not save the walk", error); }
+}
+function restoreProgress(saved) {
+  if (!saved) return;
+  const valid = (v, n, limit) => Array.isArray(v) && v.length === n && v.every(x => typeof x === "number" && Number.isFinite(x) && Math.abs(x) <= limit);
+  if (valid(saved.position, 3, 500) && valid(saved.rotation, 4, 1) && saved.rotation.some(x => Math.abs(x) > 0.01)) {
+    player.feet.fromArray(saved.position);
+    player.eyeY = player.feet.y + EYE_HEIGHT;
+    camera.position.set(player.feet.x, player.eyeY, player.feet.z);
+    camera.quaternion.fromArray(saved.rotation).normalize();
+  }
+  dayNight?.setState(saved.time);
+  if (typeof saved.lampLit === "boolean") dayNight?.setLampLit(saved.lampLit);
+  blackjack?.setState(saved.blackjack);
+  fishing?.setState(saved.fishing);
+  if (typeof saved.muted === "boolean") { ambientAudio.setMuted(saved.muted); weather.setMuted(saved.muted); }
+}
+setInterval(saveProgress, 20000);
+window.addEventListener("beforeunload", saveProgress);
 
 // Door + lighthouse interior state, filled in once the GLB has loaded.
 let doorPivot = null;
@@ -408,7 +464,9 @@ let doorOpenAngle = -1.92;
 let doorAzimuth = Math.PI / 4;
 let interiorGroup = null;
 let upperRoom = null;
+let lanternGallery = null;
 let blackjack = null;
+let interiorProps = null;
 
 const cameraEuler = new THREE.Euler(0, 0, 0, "YXZ");
 const moveDirection = new THREE.Vector3();
@@ -427,7 +485,9 @@ function sampleGround(x, z, fromY = 20) {
 // Do not let the upper floor's raycast hide the floor beneath it.
 function samplePlayerGround(x, z, feetY) {
   if (upperRoom && feetY >= upperRoom.ceilingY - 0.05 && feetY < upperRoom.ceilingY + 0.3 && Math.hypot(x, z) < 1.5) return upperRoom.ceilingY;
+  if (lanternGallery && feetY >= lanternGallery.floorY - 0.1 && feetY < lanternGallery.floorY + 0.3 && Math.hypot(x, z) < 2.1) return lanternGallery.floorY;
   let fromY = feetY + 3.2;
+  if (lanternGallery && feetY < lanternGallery.floorY - 0.1) fromY = Math.min(fromY, lanternGallery.floorY - 0.05);
   if (upperRoom && Math.hypot(x, z) < 2 && feetY >= upperRoom.floorY - 1 && feetY < upperRoom.ceilingY - 0.05) {
     fromY = Math.min(fromY, upperRoom.ceilingY - 0.05);
   }
@@ -460,7 +520,7 @@ function isFacingDoor() {
 }
 
 function canUseDoor() {
-  return doorReady && isNearDoor() && isFacingDoor();
+  return doorReady && Math.abs(player.feet.y - ROOM_FLOOR) < 2 && isNearDoor() && isFacingDoor();
 }
 
 function inDoorway(x, z) {
@@ -471,6 +531,7 @@ function inDoorway(x, z) {
 }
 
 function solidAt(x, z) {
+  if (lanternGallery && player.feet.y >= lanternGallery.floorY - 0.2) return lanternGallery.blocks(x, z);
   if (upperRoom && player.feet.y >= upperRoom.ceilingY - 0.2) return upperRoom.blocks(x, z, player.feet.y);
   for (const collider of colliders) {
     const reach = collider.radius + PLAYER_RADIUS;
@@ -523,6 +584,7 @@ function placeAtStart() {
 function resetPlayer() {
   sea.reset();
   if (upperRoom) upperRoom.reset();
+  if (lanternGallery) lanternGallery.reset();
   if (tinny) tinny.reset();
   placeAtStart();
   player.started = true;
@@ -533,14 +595,23 @@ function resetPlayer() {
 // ---------------------------------------------------------------------------
 
 window.addEventListener("keydown", (event) => {
+  if (interiorProps && interiorProps.key(event)) return;
   if (blackjack && blackjack.key(event)) return;
-  if (event.code === "Escape" && walkMode && !pointerLook) {
+  if (event.code === "Escape" && walkMode) {
+    event.preventDefault();
+    if (fishing?.closeOverlay()) return;
+    if (document.pointerLockElement) document.exitPointerLock();
     pauseWalkabout();
     return;
   }
   // Before the first walk the menu is hidden; Esc brings it up.
   if (event.code === "Escape" && !walkMode) {
-    overlay.classList.remove("hidden");
+    event.preventDefault();
+    if (player.started) enterWalkabout();
+    else {
+      titleMusic.start();
+      overlay.classList.toggle("hidden");
+    }
     return;
   }
   // On the title flyover any key starts the walk. A keypress counts as a user
@@ -561,8 +632,11 @@ window.addEventListener("keydown", (event) => {
     else if (fishing && fishing.canInteract(camera)) fishing.interact();
     else if (fisherman && fisherman.canInteract(camera)) fisherman.interact(player.feet);
     else if (brunson && brunson.canInteract(camera)) brunson.interact();
+    else if (lanternGallery && lanternGallery.prompt(player, camera)) lanternGallery.interact(player, camera);
     else if (upperRoom && upperRoom.prompt(player, camera)) upperRoom.interact(player, camera);
-    else if (blackjack && blackjack.canInteract(camera)) blackjack.interact();
+    else if (lanternGallery && lanternGallery.canLight(player, dayNight)) { dayNight.lightLamp(); showToast("The lighthouse lamp is lit", 2500); }
+    else if (blackjack && blackjack.canInteract(camera)) blackjack.interact(camera);
+    else if (interiorProps && interiorProps.prompt(camera)) interiorProps.interact(camera);
     else if (tinny && tinny.canInteract(camera)) tinny.interact(player, camera);
   }
   if (event.code === "KeyR" && walkMode) resetPlayer();
@@ -588,7 +662,7 @@ window.addEventListener("blur", () => {
 // ---------------------------------------------------------------------------
 
 function updatePlayer(dt) {
-  if (!walkMode || !player.ready || blackjack?.open) return;
+  if (!walkMode || !player.ready || blackjack?.open || interiorProps?.open) return;
 
   cameraEuler.setFromQuaternion(camera.quaternion);
   if (testSetup) {
@@ -622,7 +696,8 @@ function updatePlayer(dt) {
     return;
   }
 
-  if (upperRoom && upperRoom.update(player, forward, forwardInput, jumpQueued, dt, camera)) {
+  if ((lanternGallery && lanternGallery.update(player, forward, forwardInput, jumpQueued, dt, camera)) ||
+      (upperRoom && upperRoom.update(player, forward, forwardInput, jumpQueued, dt, camera))) {
     jumpQueued = false;
     if (player.feet.y !== startY) ambientAudio.movementSound("climb", player.feet.y - startY);
     player.eyeY = THREE.MathUtils.damp(player.eyeY, player.feet.y + EYE_HEIGHT, 16, dt);
@@ -1385,9 +1460,15 @@ function buildInterior(floorY, roomRadius) {
   crateSmall.castShadow = true;
   crate.add(crateSmall);
 
+  interiorProps = buildInteriorProps(group, floorY, ceilingY, azimuth, table, book, shelf, colliders, ambientAudio, () => {
+    keys.clear(); jumpQueued = false;
+    if (document.pointerLockElement) document.exitPointerLock();
+  }, () => { keys.clear(); enableDragLook(true); });
+
   upperRoom = buildUpperRoom(scene, groundTargets, azimuth, floorY, ceilingY);
   blackjack = buildBlackjack(scene, azimuth, ceilingY, () => {
-    keys.clear(); jumpQueued = false;
+    keys.clear(); jumpQueued = false; dragging = false;
+    crosshair.classList.remove("visible"); hud.classList.remove("visible"); interact.classList.remove("visible");
     if (document.pointerLockElement) document.exitPointerLock();
   }, () => { keys.clear(); enableDragLook(true); });
 
@@ -1400,8 +1481,10 @@ function buildInterior(floorY, roomRadius) {
     });
   };
   addInteriorCollider(backAngle, tableRadius, 0.46);
-  addInteriorCollider(barrelAngle, 1.47, 0.34);
+  // This barrel occupied the narrow space between the shrine and ladder.
+  group.remove(barrel);
   addInteriorCollider(crateAngle, 1.43, 0.42);
+  brunsonShrine = buildBrunsonShrine(group, azimuth, floorY, roomRadius, colliders);
 }
 
 function forWallFacing(angle) {
@@ -1411,6 +1494,7 @@ function forWallFacing(angle) {
 }
 
 function onModelLoaded(gltf) {
+  try {
   model = gltf.scene;
   model.name = "Lighthouse Island";
   model.scale.setScalar(WORLD_SCALE);
@@ -1421,19 +1505,28 @@ function onModelLoaded(gltf) {
   const grassSkirt = model.getObjectByName("Grass_Skirt");
   if (grassSkirt) groundTargets.push(grassSkirt);
   setupDoorAndInterior(model);
+  if (upperRoom) {
+    try { lanternGallery = buildLanternGallery(scene, model, groundTargets, doorAzimuth, upperRoom.ceilingY); }
+    catch (error) { console.warn("Lantern gallery unavailable", error); }
+  }
 
   // dock.js finds the end of the beach by walking outward until the ground
   // drops below its default minGround (1.3m, the island's old waterline).
   islands = buildIslands(scene, groundTargets, colliders, sampleGround);
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
+  headland = buildHeadland(scene, groundTargets, colliders, sampleGround);
+  try { wildlife = buildWildlife(scene, sampleGround, (position) => ambientAudio.wildlifeSplash(position)); }
+  catch (error) { console.warn("Wildlife unavailable", error); }
+  try { waterGraphics = createWaterGraphics({ scene, camera, renderer, water, waterMaterial, sunLight, dock }); }
+  catch (error) { console.warn("Water graphics unavailable", error); }
   fisherman = buildFisherman(dock, colliders);
-  brunson = buildBrunson(dock, colliders, sampleGround);
-  fishing = buildFishing(scene, camera, dock, canvas, () => walkMode);
+  brunson = buildBrunson(dock, colliders);
+  fishing = buildFishing(scene, camera, dock, canvas, () => walkMode && !blackjack?.open && !interiorProps?.open);
   tinny = buildTinny(dock, groundTargets, sea, solidAt);
   seagulls = buildSeagulls(scene, model);
   ships = buildShips(scene);
-  testSetup = getTestSetup({ dock, tinny, doorAzimuth, roomFloor: ROOM_FLOOR, spawn: SPAWN, spawnLook: SPAWN_LOOK });
-  if (testSetup?.fishing) fishing.giveRod();
+  testSetup = getTestSetup({ dock, tinny, doorAzimuth, roomFloor: ROOM_FLOOR, lanternGallery, spawn: SPAWN, spawnLook: SPAWN_LOOK });
+  if (testSetup?.fishing) fishing?.giveRod();
   dayNight = buildDayNight({ scene, skyMaterial, sunSprite, sunLight, hemisphereLight, cloudMaterial, waterMaterial, lanternLight, lanternGlowMaterial, model, testSetup });
 
   player.ready = true;
@@ -1445,6 +1538,7 @@ function onModelLoaded(gltf) {
   // stall the page for seconds, which would eat the hint's 5s on screen.
   requestAnimationFrame(() => requestAnimationFrame(() => {
     attract.start();
+    titleMusic.start();
     startPrompt.classList.add("visible");
     showToast("Press Esc for controls or to pause", 5000);
   }));
@@ -1456,6 +1550,7 @@ function onModelLoaded(gltf) {
     window.__lighthouse.dock = dock;
     window.__lighthouse.seagulls = seagulls;
   }
+  } catch (error) { onModelError(error); }
 }
 
 function onModelProgress(event) {
@@ -1502,13 +1597,15 @@ function updateDoor(dt) {
   const fishingAction = walkMode && !near && fishing && fishing.canInteract(camera);
   const nearFisherman = walkMode && !near && !fishingAction && fisherman && fisherman.canInteract(camera);
   const nearBrunson = walkMode && !near && !fishingAction && !nearFisherman && brunson && brunson.canInteract(camera);
-  const ladderPrompt = walkMode && !near && upperRoom ? upperRoom.prompt(player, camera) : "";
-  const nearBlackjack = walkMode && !near && !ladderPrompt && blackjack && !blackjack.open && blackjack.canInteract(camera);
+  const ladderPrompt = walkMode && !near && !fishingAction && !nearFisherman && !nearBrunson ? (lanternGallery?.prompt(player, camera) || upperRoom?.prompt(player, camera) || "") : "";
+  const nearLamp = walkMode && !near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && lanternGallery && lanternGallery.canLight(player, dayNight);
+  const nearBlackjack = walkMode && !near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && !nearLamp && blackjack && !blackjack.open && blackjack.canInteract(camera);
+  const interiorPrompt = walkMode && !near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && !nearLamp && !nearBlackjack && interiorProps ? interiorProps.prompt(camera) : "";
   // The boat is moored right beside the fisherman, so it only takes the
   // prompt first while rowing; on foot, whatever you're looking at wins.
   const rowing = tinny && tinny.isRowing();
-  const nearTinny = walkMode && tinny && (rowing || (!near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && !nearBlackjack)) && tinny.canInteract(camera);
-  interact.classList.toggle("visible", !!(near || fishingAction || nearFisherman || nearBrunson || ladderPrompt || nearBlackjack || nearTinny));
+  const nearTinny = walkMode && tinny && (rowing || (!near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && !nearLamp && !nearBlackjack && !interiorPrompt)) && tinny.canInteract(camera);
+  interact.classList.toggle("visible", !blackjack?.open && !interiorProps?.open && !!(near || fishingAction || nearFisherman || nearBrunson || ladderPrompt || nearLamp || nearBlackjack || interiorPrompt || nearTinny));
   interact.querySelector("kbd").hidden = !rowing && !near && !fishingAction && !nearFisherman && !nearBrunson && ladderPrompt.startsWith("W/S");
   if (rowing && nearTinny) interactLabel.textContent = "Leave the boat";
   else if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
@@ -1516,7 +1613,9 @@ function updateDoor(dt) {
   else if (nearFisherman) interactLabel.textContent = "Bother the fisherman";
   else if (nearBrunson) interactLabel.textContent = "Talk to Jalen";
   else if (ladderPrompt) interactLabel.textContent = ladderPrompt;
+  else if (nearLamp) interactLabel.textContent = "Light the lamp";
   else if (nearBlackjack) interactLabel.textContent = "Play blackjack";
+  else if (interiorPrompt) interactLabel.textContent = interiorPrompt;
   else if (nearTinny) interactLabel.textContent = "Row the boat";
 }
 
@@ -1526,6 +1625,8 @@ function updateDoor(dt) {
 
 function setPlayingUI() {
   overlay.classList.add("hidden");
+  overlay.classList.remove("paused");
+  pauseMenu.hidden = true;
   crosshair.classList.add("visible");
   hud.classList.add("visible");
   statusLine.textContent = "";
@@ -1546,6 +1647,7 @@ function enterWalkabout() {
 
   if (!player.started) {
     placeAtStart();
+    if (!testSetup) restoreProgress(readSave());
   }
 
   attract.stop();
@@ -1554,6 +1656,7 @@ function enterWalkabout() {
   jumpQueued = false;
   walkMode = true;
   ambientAudio.start();
+  titleMusic.setMode("game");
   weather.start();
   setPlayingUI();
 
@@ -1567,6 +1670,7 @@ function enterWalkabout() {
     // rejection so a blocked lock falls back quietly instead of logging an
     // unhandled rejection.
     const request = canvas.requestPointerLock?.();
+    if (!canvas.requestPointerLock) { enableDragLook(); return; }
     if (request && typeof request.catch === "function") {
       request.catch(() => enableDragLook());
     }
@@ -1578,20 +1682,37 @@ function enterWalkabout() {
 function pauseWalkabout(message = "Paused. The lamp will wait.") {
   walkMode = false;
   ambientAudio.pause();
+  titleMusic.setMode("pause");
   weather.pause();
   keys.clear();
   jumpQueued = false;
   dragging = false;
   if (!player.started) return;
 
+  saveProgress();
+  overlay.classList.add("paused");
+  pauseMenu.hidden = false;
   overlay.classList.remove("hidden");
   crosshair.classList.remove("visible");
   hud.classList.remove("visible");
   enterButton.textContent = "Back to the island";
   statusLine.textContent = message;
+  document.querySelector("#resume").focus();
 }
 
 enterButton.addEventListener("click", enterWalkabout);
+document.querySelector("#resume").addEventListener("click", enterWalkabout);
+for (const name of ["settings", "controls"]) {
+  const button = document.getElementById(`${name}-toggle`);
+  const panel = document.getElementById(`${name}-panel`);
+  button.addEventListener("click", () => { panel.hidden = !panel.hidden; button.setAttribute("aria-expanded", String(!panel.hidden)); });
+}
+document.querySelector("#reset-start").addEventListener("click", () => { resetPlayer(); saveProgress(); enterWalkabout(); });
+document.querySelector("#new-game").addEventListener("click", () => {
+  if (!testSetup) clearSave(); resetPlayer(); dayNight?.setState(0); dayNight?.setLampLit(false); blackjack?.setState({ balance: 100 });
+  fishing?.reset();
+  ambientAudio.setMuted(false); weather.setMuted(false); enterWalkabout();
+});
 
 canvas.addEventListener("click", () => {
   if (player.ready && !walkMode) enterWalkabout();
@@ -1607,7 +1728,7 @@ controls.addEventListener("lock", () => {
 });
 
 controls.addEventListener("unlock", () => {
-  if (!walkMode || blackjack?.open) return;
+  if (!walkMode || blackjack?.open || interiorProps?.open) return;
   pointerLook = false;
   pauseWalkabout();
 });
@@ -1616,10 +1737,21 @@ document.addEventListener("pointerlockerror", () => {
   if (walkMode) enableDragLook();
 });
 
+// PointerLockControls has one speed for both axes; intercept only when Y is inverted.
+document.addEventListener("mousemove", (event) => {
+  if (!pointerLook || !settings.invertY) return;
+  event.stopImmediatePropagation();
+  cameraEuler.setFromQuaternion(camera.quaternion);
+  cameraEuler.y -= (event.movementX || 0) * 0.002 * controls.pointerSpeed;
+  cameraEuler.x += (event.movementY || 0) * 0.002 * controls.pointerSpeed;
+  cameraEuler.x = THREE.MathUtils.clamp(cameraEuler.x, -Math.PI / 2, Math.PI / 2);
+  camera.quaternion.setFromEuler(cameraEuler);
+}, true);
+
 // Fallback look control: click and drag the canvas when pointer lock is
 // blocked by the embedding browser or by a permissions policy.
 canvas.addEventListener("pointerdown", (event) => {
-  if (!walkMode || !dragLook || event.button !== 0) return;
+  if (!walkMode || blackjack?.open || !dragLook || event.button !== 0) return;
   dragging = true;
   lastPointerX = event.clientX;
   lastPointerY = event.clientY;
@@ -1631,7 +1763,7 @@ canvas.addEventListener("pointerdown", (event) => {
 });
 
 canvas.addEventListener("pointermove", (event) => {
-  if (!dragging || !walkMode || !dragLook) return;
+  if (!dragging || !walkMode || blackjack?.open || !dragLook) return;
 
   const dx = event.movementX || event.clientX - lastPointerX;
   const dy = event.movementY || event.clientY - lastPointerY;
@@ -1639,8 +1771,8 @@ canvas.addEventListener("pointermove", (event) => {
   lastPointerY = event.clientY;
 
   cameraEuler.setFromQuaternion(camera.quaternion);
-  cameraEuler.y -= dx * 0.0024;
-  cameraEuler.x -= dy * 0.0024;
+  cameraEuler.y -= dx * 0.0024 * settings.sensitivity;
+  cameraEuler.x -= dy * 0.0024 * settings.sensitivity * (settings.invertY ? -1 : 1);
   cameraEuler.x = THREE.MathUtils.clamp(
     cameraEuler.x,
     -Math.PI / 2 + 0.02,
@@ -1674,30 +1806,41 @@ camera.lookAt(0, 8.4, 0);
 const clock = new THREE.Clock();
 let elapsed = 0;
 
+const failedFrameTasks = new Set();
+function frameTask(name, action) {
+  if (failedFrameTasks.has(name)) return;
+  try { action(); } catch (error) { failedFrameTasks.add(name); console.warn(`${name} stopped updating`, error); }
+}
+
 function animate() {
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const frameTime = clock.getDelta();
+  const dt = Math.min(frameTime, 0.05);
   elapsed += dt;
 
-  attract.update(dt);
-  updatePlayer(dt);
-  if (fisherman) fisherman.update(dt, elapsed, player.feet);
-  if (brunson) brunson.update(dt, elapsed, player.feet);
-  if (fishing) fishing.update(dt, elapsed);
-  if (blackjack) blackjack.update(elapsed, camera);
-  if (tinny) tinny.update(elapsed);
-  if (seagulls) seagulls.update(dt, elapsed, player.feet);
-  if (ships) ships.update(dt, elapsed);
-  if (islands) islands.update(elapsed);
-  if (walkMode) ambientAudio.update(camera, player.feet, seagulls?.gulls, ROOM_FLOOR, TOWER_RADIUS);
-  sea.update(camera.position.y, dt);
-  updateDoor(dt);
-  weather.update(dt, player.feet, walkMode);
+  frameTask("attract", () => { attract.update(dt); });
+  frameTask("player", () => { updatePlayer(dt); });
+  frameTask("fisherman", () => { if (fisherman) fisherman.update(dt, elapsed, player.feet); });
+  frameTask("brunson", () => { if (brunson) brunson.update(dt, elapsed, player.feet); });
+  frameTask("brunsonShrine", () => { if (brunsonShrine) brunsonShrine.update(elapsed); });
+  frameTask("fishing", () => { if (fishing) fishing.update(dt, elapsed); });
+  frameTask("blackjack", () => { if (blackjack) blackjack.update(elapsed, camera); });
+  frameTask("interiorProps", () => { if (interiorProps) interiorProps.update(elapsed, camera, walkMode); });
+  frameTask("tinny", () => { if (tinny) tinny.update(elapsed); });
+  frameTask("seagulls", () => { if (seagulls) seagulls.update(dt, elapsed, player.feet); });
+  frameTask("ships", () => { if (ships) ships.update(dt, elapsed); });
+  frameTask("islands", () => { if (islands) islands.update(elapsed); });
+  frameTask("headland", () => { if (headland) headland.update(elapsed); });
+  frameTask("wildlife", () => { if (wildlife) wildlife.update(dt, elapsed, player.feet, dayNight ? dayNight.getDaylight() : 1); });
+  frameTask("ambientAudio", () => { if (walkMode) ambientAudio.update(camera, player.feet, seagulls?.gulls, ROOM_FLOOR, TOWER_RADIUS); });
+  frameTask("sea", () => { sea.update(camera.position.y, dt); });
+  frameTask("door", () => { updateDoor(dt); });
+  frameTask("weather", () => { weather.update(dt, player.feet, walkMode); });
 
-  waterNormal.offset.x = (waterNormal.offset.x + dt * 0.012) % 1;
-  waterNormal.offset.y = (waterNormal.offset.y - dt * 0.008 + 1) % 1;
+  frameTask("water normals", () => { waterNormal.offset.x = (waterNormal.offset.x + dt * 0.012) % 1; });
+  frameTask("water normals", () => { waterNormal.offset.y = (waterNormal.offset.y - dt * 0.008 + 1) % 1; });
 
-  if (dayNight) dayNight.update(dt);
-
+  frameTask("dayNight", () => { if (dayNight) dayNight.update(dt); });
+  frameTask("waterGraphics", () => { if (waterGraphics) waterGraphics.update(elapsed, dayNight ? dayNight.getDaylight() : 1, frameTime); });
   renderer.render(scene, camera);
 }
 
@@ -1706,13 +1849,16 @@ renderer.setAnimationLoop(animate);
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  if (waterGraphics) waterGraphics.resize();
+  applySettings(settings);
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
 // Handy for poking at the scene from the browser console.
 window.__lighthouse = {
   THREE,
+  setQuality,
+  getQuality,
   scene,
   camera,
   controls,

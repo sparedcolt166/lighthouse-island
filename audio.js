@@ -6,7 +6,8 @@ const MASTER_VOLUME = 0.9;
 
 export function createAmbientAudio() {
   let context = null;
-  let master, outside, outsideFilter;
+  let master, game, musicGain, effectsGain, titleGain, outside, outsideFilter;
+  let masterVolume = 1, musicVolume = 1, effectsVolume = 1;
   let muted = false;
   let nextGull = 0, nextNote = 0, nextPad = 0, nextListener = 0;
   let footsteps = null;
@@ -41,11 +42,17 @@ export function createAmbientAudio() {
     if (!AudioContext) return false;
     context = new AudioContext();
     master = context.createGain();
-    master.gain.value = muted ? 0 : MASTER_VOLUME;
+    master.gain.value = muted ? 0 : MASTER_VOLUME * masterVolume;
     master.connect(context.destination);
+    game = context.createGain();
+    game.gain.value = 0;
+    game.connect(master);
+    musicGain = context.createGain(); musicGain.gain.value = musicVolume; musicGain.connect(game);
+    effectsGain = context.createGain(); effectsGain.gain.value = effectsVolume; effectsGain.connect(game);
+    titleGain = context.createGain(); titleGain.gain.value = musicVolume; titleGain.connect(master);
     outside = context.createGain();
     outside.gain.value = 1;
-    outside.connect(master);
+    outside.connect(effectsGain);
     outsideFilter = context.createBiquadFilter();
     outsideFilter.type = "lowpass";
     outsideFilter.frequency.value = 6000;
@@ -60,7 +67,7 @@ export function createAmbientAudio() {
       samples[i] *= fade;
       samples[samples.length - 1 - i] *= fade;
     }
-    footsteps = createFootsteps(context, master, noise);
+    footsteps = createFootsteps(context, effectsGain, noise);
     // Two slow, independent swells keep the repeating noise bed unobtrusive.
     makeBed(noise, 650, 0.16, 0.075, 0.10);
     makeBed(noise, 1800, 0.035, 0.043, 0.018);
@@ -78,7 +85,7 @@ export function createAmbientAudio() {
     envelope.gain.setValueAtTime(0.0001, start);
     envelope.gain.exponentialRampToValueAtTime(volume, start + (type === "sine" ? 0.06 : 2));
     envelope.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-    oscillator.connect(envelope).connect(master);
+    oscillator.connect(envelope).connect(musicGain);
     oscillator.start(start);
     oscillator.stop(start + duration);
   }
@@ -165,6 +172,42 @@ export function createAmbientAudio() {
   }
 
   return {
+    wildlifeSplash(position) {
+      try {
+        if (!context || context.state !== "running") return;
+        const now = context.currentTime;
+        const panner = context.createPanner();
+        panner.panningModel = "equalpower";
+        panner.refDistance = 15;
+        if (panner.positionX) {
+          panner.positionX.value = position.x;
+          panner.positionY.value = position.y;
+          panner.positionZ.value = position.z;
+        } else panner.setPosition(position.x, position.y, position.z);
+        const oscillator = context.createOscillator();
+        const envelope = context.createGain();
+        oscillator.type = "triangle";
+        oscillator.frequency.setValueAtTime(650, now);
+        oscillator.frequency.exponentialRampToValueAtTime(120, now + 0.25);
+        envelope.gain.setValueAtTime(0.035, now);
+        envelope.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+        oscillator.connect(envelope).connect(panner).connect(outsideFilter);
+        oscillator.start(now);
+        oscillator.stop(now + 0.3);
+      } catch (error) {
+        console.warn("Wildlife audio unavailable", error);
+      }
+    },
+    getChain() { return context && master ? { context, master, effects: effectsGain, music: musicGain } : null; },
+    titleOutput() {
+      try {
+        if (!context && !initialize()) return null;
+        return { context, master: titleGain };
+      } catch (error) {
+        console.warn("Title audio unavailable", error);
+        return null;
+      }
+    },
     movementSound(action, ...args) {
       try {
         if (footsteps) footsteps[action](...args);
@@ -177,16 +220,27 @@ export function createAmbientAudio() {
       try {
         if (!context && !initialize()) return;
         context.resume().catch(() => {});
+        game.gain.setTargetAtTime(1, context.currentTime, 1);
       } catch (error) {
         console.warn("Ambient audio unavailable", error);
       }
     },
     pause() {
-      if (context) context.suspend().catch(() => {});
+      try {
+        if (context) game.gain.setTargetAtTime(0, context.currentTime, 1);
+      } catch (error) {
+        console.warn("Ambient audio pause unavailable", error);
+      }
+    },
+    getMuted: () => muted,
+    setMuted(value) { muted = Boolean(value); if (context) master.gain.setTargetAtTime(muted ? 0 : MASTER_VOLUME * masterVolume, context.currentTime, 0.05); },
+    setVolumes(settings) {
+      masterVolume = settings.master; musicVolume = settings.music; effectsVolume = settings.effects;
+      if (context && master && musicGain && effectsGain) { master.gain.setTargetAtTime(muted ? 0 : MASTER_VOLUME * masterVolume, context.currentTime, 0.05); musicGain.gain.setTargetAtTime(musicVolume, context.currentTime, 0.05); titleGain.gain.setTargetAtTime(musicVolume, context.currentTime, 0.05); effectsGain.gain.setTargetAtTime(effectsVolume, context.currentTime, 0.05); }
     },
     toggleMute() {
       muted = !muted;
-      if (context) master.gain.setTargetAtTime(muted ? 0 : MASTER_VOLUME, context.currentTime, 0.05);
+      if (context) master.gain.setTargetAtTime(muted ? 0 : MASTER_VOLUME * masterVolume, context.currentTime, 0.05);
       return muted;
     },
     // This runs inside the render loop, so a browser quirk here must never

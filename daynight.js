@@ -91,6 +91,8 @@ export function buildDayNight({ scene, skyMaterial, sunSprite, sunLight, hemisph
   let skyTimer = 1;
   let daylight = 1;
   let elapsed = 0;
+  let lampLit = false;
+  let nightSeconds = 0;
 
   function update(dt) {
     try {
@@ -143,13 +145,16 @@ export function buildDayNight({ scene, skyMaterial, sunSprite, sunLight, hemisph
       starsMaterial.opacity = night * (0.8 + 0.12 * Math.sin(elapsed * 1.7));
       moon.visible = night > 0.05;
       moon.material.color.set(0xd9e6f3).multiplyScalar(night);
+      if (daylight < 0.35) nightSeconds += dt;
+      else if (daylight > 0.65) { nightSeconds = 0; lampLit = false; }
+      if (nightSeconds >= 90) lampLit = true;
       const flicker = 0.94 + Math.sin(elapsed * 7.3) * 0.035 + Math.sin(elapsed * 13.1 + 1.7) * 0.02;
-      lanternLight.intensity = (200 + 240 * night) * flicker;
-      lanternGlowMaterial.opacity = (0.58 + 0.3 * night) * flicker;
+      lanternLight.intensity = lampLit ? (200 + 240 * night) * flicker : 0;
+      lanternGlowMaterial.opacity = lampLit ? (0.58 + 0.3 * night) * flicker : 0;
       for (const material of windows) material.emissiveIntensity = 1.8 + 2.4 * night;
       beamGroup.rotation.y = elapsed * Math.PI * 2 / 9;
-      beamMaterial.opacity = 0.065 * night;
-      spot.intensity = 18000 * night;
+      beamMaterial.opacity = lampLit ? 0.065 * night : 0;
+      spot.intensity = lampLit ? 18000 * night : 0;
       spot.target.position.set(Math.cos(beamGroup.rotation.y) * 100, 0, -Math.sin(beamGroup.rotation.y) * 100);
     } catch (error) {
       // Lighting must never stop movement or rendering on a browser with missing features.
@@ -160,7 +165,12 @@ export function buildDayNight({ scene, skyMaterial, sunSprite, sunLight, hemisph
   originalSky.dispose();
   return {
     update,
+    getState: () => phase,
+    setState(value) { if (typeof value === "number" && Number.isFinite(value) && value >= 0 && value < 1) { phase = value; skyTimer = 1; update(0); } },
     getDaylight: () => daylight,
+    isLampLit: () => lampLit,
+    setLampLit(value) { if (typeof value === "boolean") { lampLit = value; update(0); } },
+    lightLamp: () => { lampLit = true; },
     getSkyColor: () => skyColor,
     getFogColor: () => scene.fog.color,
     toggleSpeed: () => { speed = speed === 1 ? 60 : 1; return speed; },

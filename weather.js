@@ -4,7 +4,7 @@ import * as THREE from "three";
 // sun *= 1 - 0.4 * weatherDim; hemisphere *= 1 - 0.25 * weatherDim.
 export let weatherDim = 0;
 
-export function createWeather(scene, camera, cloudMaterial, sampleGround, roomFloor, towerRadius, testRain) {
+export function createWeather(scene, camera, cloudMaterial, sampleGround, roomFloor, towerRadius, testRain, audio) {
   const random = (min, max) => min + Math.random() * (max - min);
   let phase = testRain ? "shower" : "clear";
   let remaining = testRain ? random(90, 180) : random(180, 360);
@@ -55,14 +55,15 @@ export function createWeather(scene, camera, cloudMaterial, sampleGround, roomFl
   }
   let nextRing = 0, ringIndex = 0;
   let context = null, master = null, filter = null, noise = null, muted = false, playing = false;
+  let volume = 1;
   let nextTick = 0, nextThunder = 0;
   function start() {
     playing = true;
     try {
       if (!context) {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) return;
-        context = new AudioContext();
+        const chain = audio.getChain();
+        if (!chain) return;
+        context = chain.context;
         noise = context.createBuffer(1, context.sampleRate * 3, context.sampleRate);
         const data = noise.getChannelData(0);
         for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.min(1, i / 2000, (data.length - i) / 2000);
@@ -73,7 +74,7 @@ export function createWeather(scene, camera, cloudMaterial, sampleGround, roomFl
         filter.type = "lowpass";
         master = context.createGain();
         master.gain.value = 0;
-        source.connect(filter).connect(master).connect(context.destination);
+        source.connect(filter).connect(master).connect(chain.effects);
         source.start();
         nextThunder = context.currentTime + random(35, 80);
       }
@@ -149,7 +150,7 @@ export function createWeather(scene, camera, cloudMaterial, sampleGround, roomFl
       }
       if (context && master) {
         const now = context.currentTime;
-        master.gain.setTargetAtTime(playing && !muted ? dim * (inside ? 0.025 : 0.11) : 0, now, 0.4);
+        master.gain.setTargetAtTime(playing && !muted ? volume * dim * (inside ? 0.025 : 0.11) : 0, now, 0.4);
         filter.frequency.setTargetAtTime(inside ? 700 : 3500, now, 0.5);
         if (playing && !muted && dim > 0.2 && now >= nextTick) {
           soundEvent(false, dim); nextTick = now + random(0.15, 0.55);
@@ -162,5 +163,5 @@ export function createWeather(scene, camera, cloudMaterial, sampleGround, roomFl
       // Weather is cosmetic; an audio or geometry failure must not stop rendering.
     }
   }
-  return { update, start, pause() { playing = false; }, setMuted(value) { muted = value; } };
+  return { update, start, pause() { playing = false; }, setMuted(value) { muted = value; }, setVolume(value) { volume = value; } };
 }
