@@ -7,7 +7,7 @@ export function isRainTest() {
 }
 
 // Shortcuts are deliberately unavailable on the public GitHub Pages site.
-export function getTestSetup({ dock, tinny, doorAzimuth, roomFloor, spawn, spawnLook }) {
+export function getTestSetup({ dock, tinny, doorAzimuth, roomFloor, lanternGallery, spawn, spawnLook }) {
   if (!["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)) return null;
   const scenario = new URLSearchParams(window.location.search).get("test");
   if (scenario === "controls" || scenario === "night" || scenario === "rain") return { position: spawn.clone(), lookAt: spawnLook.clone() };
@@ -28,6 +28,15 @@ export function getTestSetup({ dock, tinny, doorAzimuth, roomFloor, spawn, spawn
     return {
       position: tinny.group.localToWorld(new THREE.Vector3(0, 0.4, -0.1)),
       lookAt: tinny.group.localToWorld(new THREE.Vector3(0, 0.1, 1)),
+    };
+  }
+  if ((scenario === "gallery" || scenario === "lantern") && lanternGallery) {
+    const angle = lanternGallery.doorAngle;
+    const radius = scenario === "gallery" ? 1.8 : 0.35;
+    return {
+      position: new THREE.Vector3(Math.sin(angle) * radius, lanternGallery.floorY, Math.cos(angle) * radius),
+      lookAt: new THREE.Vector3(Math.sin(angle) * 4, lanternGallery.floorY + 1.5, Math.cos(angle) * 4),
+      fromY: lanternGallery.floorY + 0.5,
     };
   }
   if (scenario === "blackjack") {
