@@ -24,6 +24,12 @@ export function getTestSetup({ dock, tinny, doorAzimuth, roomFloor, spawn, spawn
       fishing: true,
     };
   }
+  if (scenario === "water") {
+    return {
+      position: dock.group.localToWorld(new THREE.Vector3(0, dock.deckY, dock.deckEnd - 1)),
+      lookAt: dock.group.localToWorld(new THREE.Vector3(0, 0, dock.deckEnd + 12)),
+    };
+  }
   if (scenario === "dock") {
     return {
       position: dock.group.localToWorld(new THREE.Vector3(0, dock.deckY, dock.deckEnd - 3)),
