@@ -11,6 +11,7 @@ import { buildTinny } from "./tinny.js";
 import { buildSeagulls } from "./seagulls.js";
 import { buildShips } from "./ships.js";
 import { createAmbientAudio } from "./audio.js";
+import { createTitleMusic } from "./title-music.js";
 import { getTestSetup, isRainTest } from "./dev-test.js";
 import { settleGround } from "./ground.js";
 import { createWaterSystem } from "./water.js";
@@ -392,6 +393,7 @@ let tinny = null;
 let seagulls = null;
 let ships = null;
 const ambientAudio = createAmbientAudio();
+const titleMusic = createTitleMusic(ambientAudio);
 const weather = createWeather(scene, camera, cloudMaterial, sampleGround, ROOM_FLOOR, TOWER_RADIUS, isRainTest());
 let testSetup = null;
 let dayNight = null;
@@ -553,6 +555,7 @@ window.addEventListener("keydown", (event) => {
   }
   // Before the first walk the menu is hidden; Esc brings it up.
   if (event.code === "Escape" && !walkMode) {
+    titleMusic.start();
     overlay.classList.remove("hidden");
     return;
   }
@@ -1469,6 +1472,7 @@ function onModelLoaded(gltf) {
   // stall the page for seconds, which would eat the hint's 5s on screen.
   requestAnimationFrame(() => requestAnimationFrame(() => {
     attract.start();
+    titleMusic.start();
     startPrompt.classList.add("visible");
     showToast("Press Esc for controls or to pause", 5000);
   }));
@@ -1580,6 +1584,7 @@ function enterWalkabout() {
   jumpQueued = false;
   walkMode = true;
   ambientAudio.start();
+  titleMusic.setMode("game");
   weather.start();
   setPlayingUI();
 
@@ -1604,6 +1609,7 @@ function enterWalkabout() {
 function pauseWalkabout(message = "Paused. The lamp will wait.") {
   walkMode = false;
   ambientAudio.pause();
+  titleMusic.setMode("pause");
   weather.pause();
   keys.clear();
   jumpQueued = false;

@@ -6,7 +6,7 @@ const MASTER_VOLUME = 0.9;
 
 export function createAmbientAudio() {
   let context = null;
-  let master, outside, outsideFilter;
+  let master, game, outside, outsideFilter;
   let muted = false;
   let nextGull = 0, nextNote = 0, nextPad = 0, nextListener = 0;
   let footsteps = null;
@@ -43,9 +43,12 @@ export function createAmbientAudio() {
     master = context.createGain();
     master.gain.value = muted ? 0 : MASTER_VOLUME;
     master.connect(context.destination);
+    game = context.createGain();
+    game.gain.value = 0;
+    game.connect(master);
     outside = context.createGain();
     outside.gain.value = 1;
-    outside.connect(master);
+    outside.connect(game);
     outsideFilter = context.createBiquadFilter();
     outsideFilter.type = "lowpass";
     outsideFilter.frequency.value = 6000;
@@ -60,7 +63,7 @@ export function createAmbientAudio() {
       samples[i] *= fade;
       samples[samples.length - 1 - i] *= fade;
     }
-    footsteps = createFootsteps(context, master, noise);
+    footsteps = createFootsteps(context, game, noise);
     // Two slow, independent swells keep the repeating noise bed unobtrusive.
     makeBed(noise, 650, 0.16, 0.075, 0.10);
     makeBed(noise, 1800, 0.035, 0.043, 0.018);
@@ -78,7 +81,7 @@ export function createAmbientAudio() {
     envelope.gain.setValueAtTime(0.0001, start);
     envelope.gain.exponentialRampToValueAtTime(volume, start + (type === "sine" ? 0.06 : 2));
     envelope.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-    oscillator.connect(envelope).connect(master);
+    oscillator.connect(envelope).connect(game);
     oscillator.start(start);
     oscillator.stop(start + duration);
   }
@@ -192,6 +195,15 @@ export function createAmbientAudio() {
       }
     },
     getChain() { return context && master ? { context, master } : null; },
+    titleOutput() {
+      try {
+        if (!context && !initialize()) return null;
+        return { context, master };
+      } catch (error) {
+        console.warn("Title audio unavailable", error);
+        return null;
+      }
+    },
     movementSound(action, ...args) {
       try {
         if (footsteps) footsteps[action](...args);
@@ -204,12 +216,17 @@ export function createAmbientAudio() {
       try {
         if (!context && !initialize()) return;
         context.resume().catch(() => {});
+        game.gain.setTargetAtTime(1, context.currentTime, 1);
       } catch (error) {
         console.warn("Ambient audio unavailable", error);
       }
     },
     pause() {
-      if (context) context.suspend().catch(() => {});
+      try {
+        if (context) game.gain.setTargetAtTime(0, context.currentTime, 1);
+      } catch (error) {
+        console.warn("Ambient audio pause unavailable", error);
+      }
     },
     toggleMute() {
       muted = !muted;
