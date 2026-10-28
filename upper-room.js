@@ -82,7 +82,13 @@ export function buildUpperRoom(scene, groundTargets, azimuth, floorY, ceilingY) 
     crossbar.position.y = y;
     windowFrame.add(crossbar);
   }
-  const roof = new THREE.Mesh(new THREE.CircleGeometry(1.57, 40), wood);
+  const roofShape = new THREE.Shape();
+  roofShape.absarc(0, 0, 1.57, 0, Math.PI * 2, false);
+  const roofHole = new THREE.Path();
+  const secondAngle = angle - Math.PI / 2;
+  roofHole.absarc(Math.sin(secondAngle) * 0.9, Math.cos(secondAngle) * 0.9, 0.4, 0, Math.PI * 2, true);
+  roofShape.holes.push(roofHole);
+  const roof = new THREE.Mesh(new THREE.ShapeGeometry(roofShape, 40), wood);
   roof.position.y = ceilingY + 3.1;
   roof.rotation.x = Math.PI / 2;
   group.add(roof);

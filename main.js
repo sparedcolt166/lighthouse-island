@@ -25,6 +25,7 @@ import { createWeather } from "./weather.js";
 import { buildBlackjack } from "./blackjack.js";
 import { buildWildlife } from "./wildlife.js";
 import { buildInteriorProps } from "./interior-props.js";
+import { buildLanternGallery } from "./lantern-gallery.js";
 
 // ---------------------------------------------------------------------------
 // Page bits
@@ -421,6 +422,7 @@ let doorOpenAngle = -1.92;
 let doorAzimuth = Math.PI / 4;
 let interiorGroup = null;
 let upperRoom = null;
+let lanternGallery = null;
 let blackjack = null;
 let interiorProps = null;
 
@@ -441,7 +443,9 @@ function sampleGround(x, z, fromY = 20) {
 // Do not let the upper floor's raycast hide the floor beneath it.
 function samplePlayerGround(x, z, feetY) {
   if (upperRoom && feetY >= upperRoom.ceilingY - 0.05 && feetY < upperRoom.ceilingY + 0.3 && Math.hypot(x, z) < 1.5) return upperRoom.ceilingY;
+  if (lanternGallery && feetY >= lanternGallery.floorY - 0.1 && feetY < lanternGallery.floorY + 0.3 && Math.hypot(x, z) < 2.1) return lanternGallery.floorY;
   let fromY = feetY + 3.2;
+  if (lanternGallery && feetY < lanternGallery.floorY - 0.1) fromY = Math.min(fromY, lanternGallery.floorY - 0.05);
   if (upperRoom && Math.hypot(x, z) < 2 && feetY >= upperRoom.floorY - 1 && feetY < upperRoom.ceilingY - 0.05) {
     fromY = Math.min(fromY, upperRoom.ceilingY - 0.05);
   }
@@ -474,7 +478,7 @@ function isFacingDoor() {
 }
 
 function canUseDoor() {
-  return doorReady && isNearDoor() && isFacingDoor();
+  return doorReady && Math.abs(player.feet.y - ROOM_FLOOR) < 2 && isNearDoor() && isFacingDoor();
 }
 
 function inDoorway(x, z) {
@@ -485,6 +489,7 @@ function inDoorway(x, z) {
 }
 
 function solidAt(x, z) {
+  if (lanternGallery && player.feet.y >= lanternGallery.floorY - 0.2) return lanternGallery.blocks(x, z);
   if (upperRoom && player.feet.y >= upperRoom.ceilingY - 0.2) return upperRoom.blocks(x, z, player.feet.y);
   for (const collider of colliders) {
     const reach = collider.radius + PLAYER_RADIUS;
@@ -537,6 +542,7 @@ function placeAtStart() {
 function resetPlayer() {
   sea.reset();
   if (upperRoom) upperRoom.reset();
+  if (lanternGallery) lanternGallery.reset();
   if (tinny) tinny.reset();
   placeAtStart();
   player.started = true;
@@ -577,7 +583,9 @@ window.addEventListener("keydown", (event) => {
     else if (fishing && fishing.canInteract(camera)) fishing.interact();
     else if (fisherman && fisherman.canInteract(camera)) fisherman.interact(player.feet);
     else if (brunson && brunson.canInteract(camera)) brunson.interact();
+    else if (lanternGallery && lanternGallery.prompt(player, camera)) lanternGallery.interact(player, camera);
     else if (upperRoom && upperRoom.prompt(player, camera)) upperRoom.interact(player, camera);
+    else if (lanternGallery && lanternGallery.canLight(player, dayNight)) { dayNight.lightLamp(); showToast("The lighthouse lamp is lit", 2500); }
     else if (blackjack && blackjack.canInteract(camera)) blackjack.interact();
     else if (interiorProps && interiorProps.prompt(camera)) interiorProps.interact(camera);
     else if (tinny && tinny.canInteract(camera)) tinny.interact(player, camera);
@@ -639,7 +647,8 @@ function updatePlayer(dt) {
     return;
   }
 
-  if (upperRoom && upperRoom.update(player, forward, forwardInput, jumpQueued, dt, camera)) {
+  if ((lanternGallery && lanternGallery.update(player, forward, forwardInput, jumpQueued, dt, camera)) ||
+      (upperRoom && upperRoom.update(player, forward, forwardInput, jumpQueued, dt, camera))) {
     jumpQueued = false;
     if (player.feet.y !== startY) ambientAudio.movementSound("climb", player.feet.y - startY);
     player.eyeY = THREE.MathUtils.damp(player.eyeY, player.feet.y + EYE_HEIGHT, 16, dt);
@@ -1444,6 +1453,7 @@ function onModelLoaded(gltf) {
   const grassSkirt = model.getObjectByName("Grass_Skirt");
   if (grassSkirt) groundTargets.push(grassSkirt);
   setupDoorAndInterior(model);
+  if (upperRoom) lanternGallery = buildLanternGallery(scene, model, groundTargets, doorAzimuth, upperRoom.ceilingY);
 
   // dock.js finds the end of the beach by walking outward until the ground
   // drops below its default minGround (1.3m, the island's old waterline).
@@ -1459,7 +1469,7 @@ function onModelLoaded(gltf) {
   tinny = buildTinny(dock, groundTargets, sea, solidAt);
   seagulls = buildSeagulls(scene, model);
   ships = buildShips(scene);
-  testSetup = getTestSetup({ dock, tinny, doorAzimuth, roomFloor: ROOM_FLOOR, spawn: SPAWN, spawnLook: SPAWN_LOOK });
+  testSetup = getTestSetup({ dock, tinny, doorAzimuth, roomFloor: ROOM_FLOOR, lanternGallery, spawn: SPAWN, spawnLook: SPAWN_LOOK });
   if (testSetup?.fishing) fishing.giveRod();
   dayNight = buildDayNight({ scene, skyMaterial, sunSprite, sunLight, hemisphereLight, cloudMaterial, waterMaterial, lanternLight, lanternGlowMaterial, model, testSetup });
 
@@ -1530,14 +1540,15 @@ function updateDoor(dt) {
   const fishingAction = walkMode && !near && fishing && fishing.canInteract(camera);
   const nearFisherman = walkMode && !near && !fishingAction && fisherman && fisherman.canInteract(camera);
   const nearBrunson = walkMode && !near && !fishingAction && !nearFisherman && brunson && brunson.canInteract(camera);
-  const ladderPrompt = walkMode && !near && !fishingAction && !nearFisherman && !nearBrunson && upperRoom ? upperRoom.prompt(player, camera) : "";
-  const nearBlackjack = walkMode && !near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && blackjack && !blackjack.open && blackjack.canInteract(camera);
-  const interiorPrompt = walkMode && !near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && !nearBlackjack && interiorProps ? interiorProps.prompt(camera) : "";
+  const ladderPrompt = walkMode && !near && !fishingAction && !nearFisherman && !nearBrunson ? (lanternGallery?.prompt(player, camera) || upperRoom?.prompt(player, camera) || "") : "";
+  const nearLamp = walkMode && !near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && lanternGallery && lanternGallery.canLight(player, dayNight);
+  const nearBlackjack = walkMode && !near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && !nearLamp && blackjack && !blackjack.open && blackjack.canInteract(camera);
+  const interiorPrompt = walkMode && !near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && !nearLamp && !nearBlackjack && interiorProps ? interiorProps.prompt(camera) : "";
   // The boat is moored right beside the fisherman, so it only takes the
   // prompt first while rowing; on foot, whatever you're looking at wins.
   const rowing = tinny && tinny.isRowing();
-  const nearTinny = walkMode && tinny && (rowing || (!near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && !nearBlackjack && !interiorPrompt)) && tinny.canInteract(camera);
-  interact.classList.toggle("visible", !!(near || fishingAction || nearFisherman || nearBrunson || ladderPrompt || nearBlackjack || interiorPrompt || nearTinny));
+  const nearTinny = walkMode && tinny && (rowing || (!near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && !nearLamp && !nearBlackjack && !interiorPrompt)) && tinny.canInteract(camera);
+  interact.classList.toggle("visible", !!(near || fishingAction || nearFisherman || nearBrunson || ladderPrompt || nearLamp || nearBlackjack || interiorPrompt || nearTinny));
   interact.querySelector("kbd").hidden = !rowing && !near && !fishingAction && !nearFisherman && !nearBrunson && ladderPrompt.startsWith("W/S");
   if (rowing && nearTinny) interactLabel.textContent = "Leave the boat";
   else if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
@@ -1545,6 +1556,7 @@ function updateDoor(dt) {
   else if (nearFisherman) interactLabel.textContent = "Bother the fisherman";
   else if (nearBrunson) interactLabel.textContent = "Talk to Jalen";
   else if (ladderPrompt) interactLabel.textContent = ladderPrompt;
+  else if (nearLamp) interactLabel.textContent = "Light the lamp";
   else if (nearBlackjack) interactLabel.textContent = "Play blackjack";
   else if (interiorPrompt) interactLabel.textContent = interiorPrompt;
   else if (nearTinny) interactLabel.textContent = "Row the boat";
