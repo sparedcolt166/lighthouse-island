@@ -118,68 +118,74 @@ export function buildUpperRoom(scene, groundTargets, azimuth, floorY, ceilingY) 
     furniture.add(mesh);
     return mesh;
   }
-  furnishing(0.72, 0.3, 1.65, dark, -1.05, 0.3, -0.15);
-  furnishing(0.66, 0.16, 1.52, cloth, -1.05, 0.53, -0.15);
-  furnishing(0.58, 0.12, 0.3, paper, -1.05, 0.67, -0.72);
-  furnishing(0.78, 0.08, 0.48, wood, 0.9, 0.78, -0.65);
-  for (const x of [0.58, 1.22]) for (const z of [-0.82, -0.48]) furnishing(0.06, 0.75, 0.06, dark, x, 0.38, z);
-  furnishing(0.3, 0.035, 0.24, paper, 0.82, 0.84, -0.65);
-  furnishing(0.65, 0.48, 0.42, dark, 0.85, 0.24, 0.35);
-  furnishing(0.68, 0.06, 0.45, wood, 0.85, 0.51, 0.35);
-  const lamp = furnishing(0.12, 0.2, 0.12, brass, 1.14, 0.92, -0.65);
+  // A compact lamp shelf leaves the center open for the card table.
+  furnishing(0.42, 0.5, 0.35, dark, 1.05, 0.25, 0.15);
+  const lamp = furnishing(0.12, 0.2, 0.12, brass, 1.05, 0.65, 0.15);
   const light = new THREE.PointLight(0xffbd70, 3, 6, 2);
-  light.position.set(1.14, ceilingY + 1.1, -0.65);
+  light.position.set(1.05, ceilingY + 0.85, 0.15);
   furniture.add(light);
   lamp.material = new THREE.MeshStandardMaterial({ color: 0xffc77b, emissive: 0xffa743, emissiveIntensity: 1.5 });
 
-  // The hatch is fenced off upstairs: the player faces the ladder when they
-  // step off the top, so a held W would otherwise walk them straight back
-  // down the hole. They climb down by backing onto the ladder with S instead.
   const hatchX = outwardX * hatchRadius;
   const hatchZ = outwardZ * hatchRadius;
-  const hatchBlockRadius = 0.65;
   let climbing = false;
   let released = false;
+  let descending = false;
+  const viewDirection = new THREE.Vector3();
+  function prompt(player, camera) {
+    if (climbing) return "W/S to climb, Space to let go";
+    const radial = player.feet.x * outwardX + player.feet.z * outwardZ;
+    const sideways = player.feet.x * outwardZ - player.feet.z * outwardX;
+    const direction = viewDirection;
+    camera.getWorldDirection(direction);
+    if (player.feet.y >= ceilingY - 0.15 && player.feet.y < ceilingY + 0.3 &&
+        Math.hypot(player.feet.x - hatchX, player.feet.z - hatchZ) < 1.05 &&
+        direction.y < -0.2 && direction.x * outwardX + direction.z * outwardZ > 0.2) return "Climb down";
+    if (player.feet.y < ceilingY - 0.4 && Math.abs(sideways) < 0.55 && radial > 0.65 && radial < 1.5) return "Climb the ladder";
+    return "";
+  }
   return {
     floorY, ceilingY,
-    reset() { climbing = false; released = false; },
+    reset() { climbing = false; released = false; descending = false; },
+    prompt,
+    interact(player, camera) {
+      const label = prompt(player, camera);
+      if (label === "Climb down" && !released) { climbing = true; descending = true; player.feet.y = ceilingY - 0.1; }
+      else if (label === "Climb the ladder" && !released) { climbing = true; descending = false; }
+    },
     blocks(x, z, y) {
       if (y < ceilingY - 0.2) return false;
-      return Math.hypot(x, z) > 1.4 || Math.hypot(x - hatchX, z - hatchZ) < hatchBlockRadius;
+      const localX = x * Math.cos(angle) - z * Math.sin(angle);
+      const localZ = x * Math.sin(angle) + z * Math.cos(angle);
+      return Math.hypot(x, z) > 1.4 || Math.hypot(x - hatchX, z - hatchZ) < 0.65 ||
+        (Math.abs(localX - 1.05) < 0.4 && Math.abs(localZ - 0.15) < 0.36) ||
+        (Math.abs(localX) < 0.8 && localZ < -0.38);
     },
-    update(player, forward, forwardInput, jump, dt) {
+    update(player, forward, forwardInput, jump, dt, camera) {
       const radial = player.feet.x * outwardX + player.feet.z * outwardZ;
       const sideways = player.feet.x * outwardZ - player.feet.z * outwardX;
       const facing = forward.x * outwardX + forward.z * outwardZ;
-      const fromHatch = Math.hypot(player.feet.x - hatchX, player.feet.z - hatchZ);
       if (released && forwardInput === 0) released = false;
       if (climbing && jump) { climbing = false; released = true; player.grounded = false; return false; }
       if (!climbing && !released) {
-        if (player.feet.y < ceilingY - 0.15 && Math.abs(sideways) < 0.38 && radial > 0.85 && radial < 1.5 &&
-            forwardInput > 0 && facing > 0.45 ||
-            player.feet.y >= ceilingY - 0.15 && player.feet.y < ceilingY + 0.2 && fromHatch < 0.95 &&
-            forwardInput < 0 && facing < -0.3) {
-          climbing = true;
-          if (player.feet.y >= ceilingY - 0.15) player.feet.y = ceilingY - 0.1;
+        if (player.feet.y < ceilingY - 0.15 && Math.abs(sideways) < 0.38 && radial > 0.85 && radial < 1.5 && forwardInput > 0 && facing > 0.45) {
+          climbing = true; descending = false;
+        } else if (forwardInput > 0 && prompt(player, camera) === "Climb down") {
+          climbing = true; descending = true; player.feet.y = ceilingY - 0.1;
         }
       }
       if (!climbing) return false;
-      player.feet.x = outwardX * hatchRadius;
-      player.feet.z = outwardZ * hatchRadius;
-      player.feet.y += forwardInput * 1.7 * dt;
+      player.feet.x = hatchX;
+      player.feet.z = hatchZ;
+      const downInput = descending && camera.getWorldDirection(viewDirection).y < -0.2 && forwardInput > 0 ? -1 : forwardInput;
+      player.feet.y += downInput * 1.7 * dt;
       player.velocityY = 0;
       player.grounded = false;
       if (player.feet.y >= ceilingY + 0.08) {
-        // Far enough in that the player clears the fenced hatch.
-        player.feet.set(outwardX * 0.3, ceilingY, outwardZ * 0.3);
-        player.grounded = true;
-        climbing = false;
-        released = true;
+        player.feet.set(outwardX * 0.35, ceilingY, outwardZ * 0.35);
+        player.grounded = true; climbing = false; released = true;
       } else if (player.feet.y <= floorY) {
-        player.feet.y = floorY;
-        climbing = false;
-        released = true;
-        player.grounded = true;
+        player.feet.y = floorY; climbing = false; released = true; player.grounded = true;
       }
       return true;
     },

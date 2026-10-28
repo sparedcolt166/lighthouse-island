@@ -79,8 +79,63 @@ export function createWaterSystem(scene, groundTargets) {
   document.body.appendChild(tint);
   let underwater = false;
   let time = 0;
+  let swimming = false;
+  let strokeTime = 0;
 
   return {
+    reset() {
+      swimming = false;
+    },
+    swim(player, direction, moving, running, keys, eyeHeight, dt, sampleGround, solidAt, camera) {
+      // Sample below the surface so a dock or boat overhead is not a seabed.
+      let floor = sampleGround(player.feet.x, player.feet.z, 0.25);
+      if (!swimming) {
+        if (player.feet.y > -1.3 || floor === null || floor > -1.3) return false;
+        swimming = true;
+        player.grounded = false;
+      }
+
+      const speed = running ? 2.55 : 1.9;
+      const stepX = direction.x * speed * dt;
+      const stepZ = direction.z * speed * dt;
+      if (!solidAt(player.feet.x + stepX, player.feet.z)) player.feet.x += stepX;
+      if (!solidAt(player.feet.x, player.feet.z + stepZ)) player.feet.z += stepZ;
+      const push = this.boundaryPush(player.feet.x, player.feet.z, dt);
+      if (!solidAt(player.feet.x + push.x, player.feet.z)) player.feet.x += push.x;
+      if (!solidAt(player.feet.x, player.feet.z + push.z)) player.feet.z += push.z;
+
+      floor = sampleGround(player.feet.x, player.feet.z, 0.25);
+      const diving = keys.has("KeyC") || keys.has("ControlLeft") || keys.has("ControlRight");
+      const rising = keys.has("Space");
+      const surfaceFeet = 0.22 - eyeHeight + Math.sin(time * 1.4) * 0.045;
+      // Damped vertical velocity makes entry and buoyancy gradual, even after a fall.
+      const targetVelocity = diving && !rising ? -1.5 : Math.min(1.6, (surfaceFeet - player.feet.y) * 2.5);
+      player.velocityY = THREE.MathUtils.damp(player.velocityY, targetVelocity, 4, dt);
+      player.feet.y += player.velocityY * dt;
+      if (player.feet.y > surfaceFeet) {
+        player.feet.y = surfaceFeet;
+        player.velocityY = Math.min(0, player.velocityY);
+      }
+      if (floor !== null && player.feet.y <= floor) {
+        player.feet.y = floor;
+        player.velocityY = Math.max(0, player.velocityY);
+      }
+      // The shallower exit threshold leaves a margin around the entry threshold.
+      if (!diving && floor !== null && floor > -1.05 && player.feet.y <= floor + 0.08) {
+        swimming = false;
+        player.feet.y = floor;
+        player.velocityY = 0;
+        player.grounded = true;
+        return false;
+      }
+      player.grounded = false;
+      player.bobAmount = THREE.MathUtils.damp(player.bobAmount, moving ? 1 : 0, 4, dt);
+      if (moving) strokeTime += dt * (running ? 5 : 3.8);
+      const stroke = Math.sin(strokeTime) * 0.025 * player.bobAmount;
+      player.eyeY = THREE.MathUtils.damp(player.eyeY, player.feet.y + eyeHeight + stroke, 8, dt);
+      camera.position.set(player.feet.x, player.eyeY, player.feet.z);
+      return true;
+    },
     speedFactor(feetY) {
       const depth = Math.max(0, -feetY);
       if (depth <= WAIST_DEPTH) return THREE.MathUtils.lerp(1, WAIST_SPEED, depth / WAIST_DEPTH);

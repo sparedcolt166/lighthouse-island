@@ -4,17 +4,22 @@ import { GLTFLoader } from "./vendor/loaders/GLTFLoader.js";
 import { buildDock } from "./dock.js";
 import { buildIslands } from "./islands.js";
 import { buildFisherman } from "./fisherman.js";
+import { buildBrunson } from "./brunson.js";
+import { buildFishing } from "./fishing.js";
 import { buildTinny } from "./tinny.js";
 import { buildSeagulls } from "./seagulls.js";
 import { buildShips } from "./ships.js";
 import { createAmbientAudio } from "./audio.js";
-import { getTestSetup } from "./dev-test.js";
+import { getTestSetup, isRainTest } from "./dev-test.js";
 import { settleGround } from "./ground.js";
 import { createWaterSystem } from "./water.js";
 import { showToast } from "./toast.js";
 import { createAttractCamera } from "./attract.js";
 import { createBookCover } from "./book-cover.js";
 import { buildUpperRoom } from "./upper-room.js";
+import { buildDayNight } from "./daynight.js";
+import { createWeather } from "./weather.js";
+import { buildBlackjack } from "./blackjack.js";
 
 // ---------------------------------------------------------------------------
 // Page bits
@@ -366,15 +371,20 @@ const groundRay = new THREE.Raycaster();
 const DOWN = new THREE.Vector3(0, -1, 0);
 const groundOrigin = new THREE.Vector3();
 const groundTargets = [];
+let lastGroundHit = null;
 const sea = createWaterSystem(scene, groundTargets);
 let islands = null;
 let dock = null;
 let fisherman = null;
+let brunson = null;
+let fishing = null;
 let tinny = null;
 let seagulls = null;
 let ships = null;
 const ambientAudio = createAmbientAudio();
+const weather = createWeather(scene, camera, cloudMaterial, sampleGround, ROOM_FLOOR, TOWER_RADIUS, isRainTest());
 let testSetup = null;
+let dayNight = null;
 const keys = new Set();
 let jumpQueued = false;
 let model = null;
@@ -398,6 +408,7 @@ let doorOpenAngle = -1.92;
 let doorAzimuth = Math.PI / 4;
 let interiorGroup = null;
 let upperRoom = null;
+let blackjack = null;
 
 const cameraEuler = new THREE.Euler(0, 0, 0, "YXZ");
 const moveDirection = new THREE.Vector3();
@@ -409,11 +420,13 @@ function sampleGround(x, z, fromY = 20) {
   groundRay.set(groundOrigin.set(x, fromY, z), DOWN);
   groundRay.far = fromY + 40;
   const hits = groundRay.intersectObjects(groundTargets, false);
-  return hits.length > 0 ? hits[0].point.y : null;
+  lastGroundHit = hits[0] || null;
+  return lastGroundHit ? lastGroundHit.point.y : null;
 }
 
 // Do not let the upper floor's raycast hide the floor beneath it.
 function samplePlayerGround(x, z, feetY) {
+  if (upperRoom && feetY >= upperRoom.ceilingY - 0.05 && feetY < upperRoom.ceilingY + 0.3 && Math.hypot(x, z) < 1.5) return upperRoom.ceilingY;
   let fromY = feetY + 3.2;
   if (upperRoom && Math.hypot(x, z) < 2 && feetY >= upperRoom.floorY - 1 && feetY < upperRoom.ceilingY - 0.05) {
     fromY = Math.min(fromY, upperRoom.ceilingY - 0.05);
@@ -508,7 +521,9 @@ function placeAtStart() {
   else placePlayer(SPAWN);
 }
 function resetPlayer() {
+  sea.reset();
   if (upperRoom) upperRoom.reset();
+  if (tinny) tinny.reset();
   placeAtStart();
   player.started = true;
 }
@@ -518,6 +533,7 @@ function resetPlayer() {
 // ---------------------------------------------------------------------------
 
 window.addEventListener("keydown", (event) => {
+  if (blackjack && blackjack.key(event)) return;
   if (event.code === "Escape" && walkMode && !pointerLook) {
     pauseWalkabout();
     return;
@@ -539,11 +555,23 @@ window.addEventListener("keydown", (event) => {
   keys.add(event.code);
   if (event.code === "Space" && !event.repeat && walkMode) jumpQueued = true;
   if (event.code === "KeyE" && !event.repeat && walkMode) {
-    if (canUseDoor()) toggleDoor();
+    // Same priority as the prompt in updateDoor: the boat first only while rowing.
+    if (tinny && tinny.isRowing()) tinny.interact(player, camera);
+    else if (canUseDoor()) toggleDoor();
+    else if (fishing && fishing.canInteract(camera)) fishing.interact();
     else if (fisherman && fisherman.canInteract(camera)) fisherman.interact(player.feet);
+    else if (brunson && brunson.canInteract(camera)) brunson.interact();
+    else if (upperRoom && upperRoom.prompt(player, camera)) upperRoom.interact(player, camera);
+    else if (blackjack && blackjack.canInteract(camera)) blackjack.interact();
+    else if (tinny && tinny.canInteract(camera)) tinny.interact(player, camera);
   }
   if (event.code === "KeyR" && walkMode) resetPlayer();
-  if (event.code === "KeyM" && !event.repeat && walkMode) showToast(ambientAudio.toggleMute() ? "Sound muted" : "Sound on", 2500);
+  if (event.code === "KeyT" && !event.repeat && testSetup && dayNight) showToast(`Time speed: ${dayNight.toggleSpeed()}x`, 2500);
+  if (event.code === "KeyM" && !event.repeat && walkMode) {
+    const muted = ambientAudio.toggleMute();
+    weather.setMuted(muted);
+    showToast(muted ? "Sound muted" : "Sound on", 2500);
+  }
 });
 
 window.addEventListener("keyup", (event) => {
@@ -560,7 +588,7 @@ window.addEventListener("blur", () => {
 // ---------------------------------------------------------------------------
 
 function updatePlayer(dt) {
-  if (!walkMode || !player.ready) return;
+  if (!walkMode || !player.ready || blackjack?.open) return;
 
   cameraEuler.setFromQuaternion(camera.quaternion);
   if (testSetup) {
@@ -570,6 +598,7 @@ function updatePlayer(dt) {
     cameraEuler.x = THREE.MathUtils.clamp(cameraEuler.x + tilt * 1.2 * dt, -Math.PI / 2 + 0.02, Math.PI / 2 - 0.02);
     camera.quaternion.setFromEuler(cameraEuler);
   }
+  const startX = player.feet.x, startY = player.feet.y, startZ = player.feet.z;
   const yaw = cameraEuler.y;
 
   forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
@@ -588,14 +617,24 @@ function updatePlayer(dt) {
   const wantsToMove = moveDirection.lengthSq() > 0;
   if (wantsToMove) moveDirection.normalize();
 
-  if (upperRoom && upperRoom.update(player, forward, forwardInput, jumpQueued, dt)) {
+  if (tinny && tinny.updateRowing(player, camera, forwardInput, sideInput, dt)) {
     jumpQueued = false;
+    return;
+  }
+
+  if (upperRoom && upperRoom.update(player, forward, forwardInput, jumpQueued, dt, camera)) {
+    jumpQueued = false;
+    if (player.feet.y !== startY) ambientAudio.movementSound("climb", player.feet.y - startY);
     player.eyeY = THREE.MathUtils.damp(player.eyeY, player.feet.y + EYE_HEIGHT, 16, dt);
     camera.position.set(player.feet.x, player.eyeY, player.feet.z);
     return;
   }
 
   const running = keys.has("ShiftLeft") || keys.has("ShiftRight");
+  if (sea.swim(player, moveDirection, wantsToMove, running, keys, EYE_HEIGHT, dt, sampleGround, solidAt, camera)) {
+    jumpQueued = false;
+    return;
+  }
   const speed = (running ? RUN_SPEED : WALK_SPEED) * sea.speedFactor(player.feet.y);
 
   // Move each horizontal axis on its own so walls can be slid along.
@@ -637,6 +676,7 @@ function updatePlayer(dt) {
     player.feet.y += player.velocityY * dt;
     floor = samplePlayerGround(player.feet.x, player.feet.z, player.feet.y);
     if (floor !== null && player.velocityY <= 0 && player.feet.y <= floor) {
+      ambientAudio.movementSound("land", lastGroundHit, player.feet, -player.velocityY);
       player.feet.y = floor;
       player.velocityY = 0;
       player.grounded = true;
@@ -647,7 +687,16 @@ function updatePlayer(dt) {
   const moving = wantsToMove && player.grounded;
   const targetBobAmount = moving ? (running ? 1 : 0.7) : 0;
   player.bobAmount = THREE.MathUtils.damp(player.bobAmount, targetBobAmount, 9, dt);
-  if (moving) player.bobTime += dt * (running ? 12.5 : 8.6);
+  if (moving) {
+    const previousBob = player.bobTime;
+    player.bobTime += dt * (running ? 12.5 : 8.6);
+    // A trough occurs at three halves of pi in each bob cycle.
+    if ((Math.abs(player.feet.x - startX) + Math.abs(player.feet.z - startZ) > 0.00001) &&
+        Math.floor((previousBob - Math.PI * 1.5) / (Math.PI * 2)) < Math.floor((player.bobTime - Math.PI * 1.5) / (Math.PI * 2))) {
+      samplePlayerGround(player.feet.x, player.feet.z, player.feet.y);
+      ambientAudio.movementSound("step", lastGroundHit, player.feet);
+    }
+  }
   const bob = Math.sin(player.bobTime) * 0.042 * player.bobAmount;
   player.eyeY = THREE.MathUtils.damp(player.eyeY, player.feet.y + EYE_HEIGHT + bob + sea.surfaceBob(player.feet.y, EYE_HEIGHT), 16, dt);
   camera.position.set(player.feet.x, player.eyeY, player.feet.z);
@@ -1337,6 +1386,10 @@ function buildInterior(floorY, roomRadius) {
   crate.add(crateSmall);
 
   upperRoom = buildUpperRoom(scene, groundTargets, azimuth, floorY, ceilingY);
+  blackjack = buildBlackjack(scene, azimuth, ceilingY, () => {
+    keys.clear(); jumpQueued = false;
+    if (document.pointerLockElement) document.exitPointerLock();
+  }, () => { keys.clear(); enableDragLook(true); });
 
   // The furniture is solid so the room feels like a room, not a stage set.
   const addInteriorCollider = (angle, distance, radius) => {
@@ -1365,6 +1418,8 @@ function onModelLoaded(gltf) {
   model.updateMatrixWorld(true);
   prepareModel(model);
   settleGround(model);
+  const grassSkirt = model.getObjectByName("Grass_Skirt");
+  if (grassSkirt) groundTargets.push(grassSkirt);
   setupDoorAndInterior(model);
 
   // dock.js finds the end of the beach by walking outward until the ground
@@ -1372,10 +1427,14 @@ function onModelLoaded(gltf) {
   islands = buildIslands(scene, groundTargets, colliders, sampleGround);
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
   fisherman = buildFisherman(dock, colliders);
-  tinny = buildTinny(dock, groundTargets);
+  brunson = buildBrunson(dock, colliders, sampleGround);
+  fishing = buildFishing(scene, camera, dock, canvas, () => walkMode);
+  tinny = buildTinny(dock, groundTargets, sea, solidAt);
   seagulls = buildSeagulls(scene, model);
   ships = buildShips(scene);
   testSetup = getTestSetup({ dock, tinny, doorAzimuth, roomFloor: ROOM_FLOOR, spawn: SPAWN, spawnLook: SPAWN_LOOK });
+  if (testSetup?.fishing) fishing.giveRod();
+  dayNight = buildDayNight({ scene, skyMaterial, sunSprite, sunLight, hemisphereLight, cloudMaterial, waterMaterial, lanternLight, lanternGlowMaterial, model, testSetup });
 
   player.ready = true;
   enterButton.disabled = false;
@@ -1426,6 +1485,7 @@ loader.load("./lighthouse.glb", onModelLoaded, onModelProgress, onModelError);
 function toggleDoor() {
   doorOpen = !doorOpen;
   doorTarget = doorOpen ? doorOpenAngle : 0;
+  ambientAudio.movementSound("door");
 }
 
 function updateDoor(dt) {
@@ -1439,10 +1499,25 @@ function updateDoor(dt) {
   }
 
   const near = walkMode && canUseDoor();
-  const nearFisherman = walkMode && !near && fisherman && fisherman.canInteract(camera);
-  interact.classList.toggle("visible", !!(near || nearFisherman));
-  if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
-  else if (nearFisherman) interactLabel.textContent = "Talk to the fisherman";
+  const fishingAction = walkMode && !near && fishing && fishing.canInteract(camera);
+  const nearFisherman = walkMode && !near && !fishingAction && fisherman && fisherman.canInteract(camera);
+  const nearBrunson = walkMode && !near && !fishingAction && !nearFisherman && brunson && brunson.canInteract(camera);
+  const ladderPrompt = walkMode && !near && upperRoom ? upperRoom.prompt(player, camera) : "";
+  const nearBlackjack = walkMode && !near && !ladderPrompt && blackjack && !blackjack.open && blackjack.canInteract(camera);
+  // The boat is moored right beside the fisherman, so it only takes the
+  // prompt first while rowing; on foot, whatever you're looking at wins.
+  const rowing = tinny && tinny.isRowing();
+  const nearTinny = walkMode && tinny && (rowing || (!near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && !nearBlackjack)) && tinny.canInteract(camera);
+  interact.classList.toggle("visible", !!(near || fishingAction || nearFisherman || nearBrunson || ladderPrompt || nearBlackjack || nearTinny));
+  interact.querySelector("kbd").hidden = !rowing && !near && !fishingAction && !nearFisherman && !nearBrunson && ladderPrompt.startsWith("W/S");
+  if (rowing && nearTinny) interactLabel.textContent = "Leave the boat";
+  else if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
+  else if (fishingAction) interactLabel.textContent = fishingAction === "pickup" ? "Pick up the rod" : fishingAction === "return" ? "Put back the rod" : "Put fish in the bucket";
+  else if (nearFisherman) interactLabel.textContent = "Bother the fisherman";
+  else if (nearBrunson) interactLabel.textContent = "Talk to Jalen";
+  else if (ladderPrompt) interactLabel.textContent = ladderPrompt;
+  else if (nearBlackjack) interactLabel.textContent = "Play blackjack";
+  else if (nearTinny) interactLabel.textContent = "Row the boat";
 }
 
 // ---------------------------------------------------------------------------
@@ -1479,6 +1554,7 @@ function enterWalkabout() {
   jumpQueued = false;
   walkMode = true;
   ambientAudio.start();
+  weather.start();
   setPlayingUI();
 
   if (pointerLockBlocked || testSetup) {
@@ -1502,6 +1578,7 @@ function enterWalkabout() {
 function pauseWalkabout(message = "Paused. The lamp will wait.") {
   walkMode = false;
   ambientAudio.pause();
+  weather.pause();
   keys.clear();
   jumpQueued = false;
   dragging = false;
@@ -1530,7 +1607,7 @@ controls.addEventListener("lock", () => {
 });
 
 controls.addEventListener("unlock", () => {
-  if (!walkMode) return;
+  if (!walkMode || blackjack?.open) return;
   pointerLook = false;
   pauseWalkabout();
 });
@@ -1604,6 +1681,9 @@ function animate() {
   attract.update(dt);
   updatePlayer(dt);
   if (fisherman) fisherman.update(dt, elapsed, player.feet);
+  if (brunson) brunson.update(dt, elapsed, player.feet);
+  if (fishing) fishing.update(dt, elapsed);
+  if (blackjack) blackjack.update(elapsed, camera);
   if (tinny) tinny.update(elapsed);
   if (seagulls) seagulls.update(dt, elapsed, player.feet);
   if (ships) ships.update(dt, elapsed);
@@ -1611,13 +1691,12 @@ function animate() {
   if (walkMode) ambientAudio.update(camera, player.feet, seagulls?.gulls, ROOM_FLOOR, TOWER_RADIUS);
   sea.update(camera.position.y, dt);
   updateDoor(dt);
+  weather.update(dt, player.feet, walkMode);
 
   waterNormal.offset.x = (waterNormal.offset.x + dt * 0.012) % 1;
   waterNormal.offset.y = (waterNormal.offset.y - dt * 0.008 + 1) % 1;
 
-  const flicker = 0.94 + Math.sin(elapsed * 7.3) * 0.035 + Math.sin(elapsed * 13.1 + 1.7) * 0.02;
-  lanternLight.intensity = 200 * flicker;
-  lanternGlowMaterial.opacity = 0.58 * flicker;
+  if (dayNight) dayNight.update(dt);
 
   renderer.render(scene, camera);
 }
