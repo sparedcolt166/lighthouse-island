@@ -5,6 +5,7 @@ import { buildDock } from "./dock.js";
 import { buildIslands } from "./islands.js";
 import { buildFisherman } from "./fisherman.js";
 import { buildBrunson } from "./brunson.js";
+import { buildFishing } from "./fishing.js";
 import { buildTinny } from "./tinny.js";
 import { buildSeagulls } from "./seagulls.js";
 import { buildShips } from "./ships.js";
@@ -375,6 +376,7 @@ let islands = null;
 let dock = null;
 let fisherman = null;
 let brunson = null;
+let fishing = null;
 let tinny = null;
 let seagulls = null;
 let ships = null;
@@ -552,6 +554,7 @@ window.addEventListener("keydown", (event) => {
     // Same priority as the prompt in updateDoor: the boat first only while rowing.
     if (tinny && tinny.isRowing()) tinny.interact(player, camera);
     else if (canUseDoor()) toggleDoor();
+    else if (fishing && fishing.canInteract(camera)) fishing.interact();
     else if (fisherman && fisherman.canInteract(camera)) fisherman.interact(player.feet);
     else if (brunson && brunson.canInteract(camera)) brunson.interact();
     else if (tinny && tinny.canInteract(camera)) tinny.interact(player, camera);
@@ -1415,10 +1418,12 @@ function onModelLoaded(gltf) {
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
   fisherman = buildFisherman(dock, colliders);
   brunson = buildBrunson(dock, colliders, sampleGround);
+  fishing = buildFishing(scene, camera, dock, canvas, () => walkMode);
   tinny = buildTinny(dock, groundTargets, sea, solidAt);
   seagulls = buildSeagulls(scene, model);
   ships = buildShips(scene);
   testSetup = getTestSetup({ dock, tinny, doorAzimuth, roomFloor: ROOM_FLOOR, spawn: SPAWN, spawnLook: SPAWN_LOOK });
+  if (testSetup?.fishing) fishing.giveRod();
   dayNight = buildDayNight({ scene, skyMaterial, sunSprite, sunLight, hemisphereLight, cloudMaterial, waterMaterial, lanternLight, lanternGlowMaterial, model, testSetup });
 
   player.ready = true;
@@ -1484,15 +1489,17 @@ function updateDoor(dt) {
   }
 
   const near = walkMode && canUseDoor();
-  const nearFisherman = walkMode && !near && fisherman && fisherman.canInteract(camera);
-  const nearBrunson = walkMode && !near && !nearFisherman && brunson && brunson.canInteract(camera);
+  const fishingAction = walkMode && !near && fishing && fishing.canInteract(camera);
+  const nearFisherman = walkMode && !near && !fishingAction && fisherman && fisherman.canInteract(camera);
+  const nearBrunson = walkMode && !near && !fishingAction && !nearFisherman && brunson && brunson.canInteract(camera);
   // The boat is moored right beside the fisherman, so it only takes the
   // prompt first while rowing; on foot, whatever you're looking at wins.
   const rowing = tinny && tinny.isRowing();
-  const nearTinny = walkMode && tinny && (rowing || (!near && !nearFisherman && !nearBrunson)) && tinny.canInteract(camera);
-  interact.classList.toggle("visible", !!(near || nearFisherman || nearBrunson || nearTinny));
+  const nearTinny = walkMode && tinny && (rowing || (!near && !fishingAction && !nearFisherman && !nearBrunson)) && tinny.canInteract(camera);
+  interact.classList.toggle("visible", !!(near || fishingAction || nearFisherman || nearBrunson || nearTinny));
   if (rowing && nearTinny) interactLabel.textContent = "Leave the boat";
   else if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
+  else if (fishingAction) interactLabel.textContent = fishingAction === "pickup" ? "Pick up the rod" : fishingAction === "return" ? "Put back the rod" : "Put fish in the bucket";
   else if (nearFisherman) interactLabel.textContent = "Bother the fisherman";
   else if (nearBrunson) interactLabel.textContent = "Talk to Jalen";
   else if (nearTinny) interactLabel.textContent = "Row the boat";
@@ -1660,6 +1667,7 @@ function animate() {
   updatePlayer(dt);
   if (fisherman) fisherman.update(dt, elapsed, player.feet);
   if (brunson) brunson.update(dt, elapsed, player.feet);
+  if (fishing) fishing.update(dt, elapsed);
   if (tinny) tinny.update(elapsed);
   if (seagulls) seagulls.update(dt, elapsed, player.feet);
   if (ships) ships.update(dt, elapsed);
