@@ -366,6 +366,7 @@ const groundRay = new THREE.Raycaster();
 const DOWN = new THREE.Vector3(0, -1, 0);
 const groundOrigin = new THREE.Vector3();
 const groundTargets = [];
+let lastGroundHit = null;
 const sea = createWaterSystem(scene, groundTargets);
 let islands = null;
 let dock = null;
@@ -409,7 +410,8 @@ function sampleGround(x, z, fromY = 20) {
   groundRay.set(groundOrigin.set(x, fromY, z), DOWN);
   groundRay.far = fromY + 40;
   const hits = groundRay.intersectObjects(groundTargets, false);
-  return hits.length > 0 ? hits[0].point.y : null;
+  lastGroundHit = hits[0] || null;
+  return lastGroundHit ? lastGroundHit.point.y : null;
 }
 
 // Do not let the upper floor's raycast hide the floor beneath it.
@@ -570,6 +572,7 @@ function updatePlayer(dt) {
     cameraEuler.x = THREE.MathUtils.clamp(cameraEuler.x + tilt * 1.2 * dt, -Math.PI / 2 + 0.02, Math.PI / 2 - 0.02);
     camera.quaternion.setFromEuler(cameraEuler);
   }
+  const startX = player.feet.x, startY = player.feet.y, startZ = player.feet.z;
   const yaw = cameraEuler.y;
 
   forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
@@ -590,6 +593,7 @@ function updatePlayer(dt) {
 
   if (upperRoom && upperRoom.update(player, forward, forwardInput, jumpQueued, dt)) {
     jumpQueued = false;
+    if (player.feet.y !== startY) ambientAudio.movementSound("climb", player.feet.y - startY);
     player.eyeY = THREE.MathUtils.damp(player.eyeY, player.feet.y + EYE_HEIGHT, 16, dt);
     camera.position.set(player.feet.x, player.eyeY, player.feet.z);
     return;
@@ -637,6 +641,7 @@ function updatePlayer(dt) {
     player.feet.y += player.velocityY * dt;
     floor = samplePlayerGround(player.feet.x, player.feet.z, player.feet.y);
     if (floor !== null && player.velocityY <= 0 && player.feet.y <= floor) {
+      ambientAudio.movementSound("land", lastGroundHit, player.feet, -player.velocityY);
       player.feet.y = floor;
       player.velocityY = 0;
       player.grounded = true;
@@ -647,7 +652,16 @@ function updatePlayer(dt) {
   const moving = wantsToMove && player.grounded;
   const targetBobAmount = moving ? (running ? 1 : 0.7) : 0;
   player.bobAmount = THREE.MathUtils.damp(player.bobAmount, targetBobAmount, 9, dt);
-  if (moving) player.bobTime += dt * (running ? 12.5 : 8.6);
+  if (moving) {
+    const previousBob = player.bobTime;
+    player.bobTime += dt * (running ? 12.5 : 8.6);
+    // A trough occurs at three halves of pi in each bob cycle.
+    if ((Math.abs(player.feet.x - startX) + Math.abs(player.feet.z - startZ) > 0.00001) &&
+        Math.floor((previousBob - Math.PI * 1.5) / (Math.PI * 2)) < Math.floor((player.bobTime - Math.PI * 1.5) / (Math.PI * 2))) {
+      samplePlayerGround(player.feet.x, player.feet.z, player.feet.y);
+      ambientAudio.movementSound("step", lastGroundHit, player.feet);
+    }
+  }
   const bob = Math.sin(player.bobTime) * 0.042 * player.bobAmount;
   player.eyeY = THREE.MathUtils.damp(player.eyeY, player.feet.y + EYE_HEIGHT + bob + sea.surfaceBob(player.feet.y, EYE_HEIGHT), 16, dt);
   camera.position.set(player.feet.x, player.eyeY, player.feet.z);
@@ -1365,6 +1379,8 @@ function onModelLoaded(gltf) {
   model.updateMatrixWorld(true);
   prepareModel(model);
   settleGround(model);
+  const grassSkirt = model.getObjectByName("Grass_Skirt");
+  if (grassSkirt) groundTargets.push(grassSkirt);
   setupDoorAndInterior(model);
 
   // dock.js finds the end of the beach by walking outward until the ground
@@ -1426,6 +1442,7 @@ loader.load("./lighthouse.glb", onModelLoaded, onModelProgress, onModelError);
 function toggleDoor() {
   doorOpen = !doorOpen;
   doorTarget = doorOpen ? doorOpenAngle : 0;
+  ambientAudio.movementSound("door");
 }
 
 function updateDoor(dt) {
