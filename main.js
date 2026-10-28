@@ -562,7 +562,7 @@ window.addEventListener("keydown", (event) => {
     else if (fisherman && fisherman.canInteract(camera)) fisherman.interact(player.feet);
     else if (brunson && brunson.canInteract(camera)) brunson.interact();
     else if (upperRoom && upperRoom.prompt(player, camera)) upperRoom.interact(player, camera);
-    else if (blackjack && blackjack.canInteract(camera)) blackjack.interact();
+    else if (blackjack && blackjack.canInteract(camera)) blackjack.interact(camera);
     else if (tinny && tinny.canInteract(camera)) tinny.interact(player, camera);
   }
   if (event.code === "KeyR" && walkMode) resetPlayer();
@@ -1387,7 +1387,8 @@ function buildInterior(floorY, roomRadius) {
 
   upperRoom = buildUpperRoom(scene, groundTargets, azimuth, floorY, ceilingY);
   blackjack = buildBlackjack(scene, azimuth, ceilingY, () => {
-    keys.clear(); jumpQueued = false;
+    keys.clear(); jumpQueued = false; dragging = false;
+    crosshair.classList.remove("visible"); hud.classList.remove("visible"); interact.classList.remove("visible");
     if (document.pointerLockElement) document.exitPointerLock();
   }, () => { keys.clear(); enableDragLook(true); });
 
@@ -1508,7 +1509,7 @@ function updateDoor(dt) {
   // prompt first while rowing; on foot, whatever you're looking at wins.
   const rowing = tinny && tinny.isRowing();
   const nearTinny = walkMode && tinny && (rowing || (!near && !fishingAction && !nearFisherman && !nearBrunson && !ladderPrompt && !nearBlackjack)) && tinny.canInteract(camera);
-  interact.classList.toggle("visible", !!(near || fishingAction || nearFisherman || nearBrunson || ladderPrompt || nearBlackjack || nearTinny));
+  interact.classList.toggle("visible", !blackjack?.open && !!(near || fishingAction || nearFisherman || nearBrunson || ladderPrompt || nearBlackjack || nearTinny));
   interact.querySelector("kbd").hidden = !rowing && !near && !fishingAction && !nearFisherman && !nearBrunson && ladderPrompt.startsWith("W/S");
   if (rowing && nearTinny) interactLabel.textContent = "Leave the boat";
   else if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
@@ -1619,7 +1620,7 @@ document.addEventListener("pointerlockerror", () => {
 // Fallback look control: click and drag the canvas when pointer lock is
 // blocked by the embedding browser or by a permissions policy.
 canvas.addEventListener("pointerdown", (event) => {
-  if (!walkMode || !dragLook || event.button !== 0) return;
+  if (!walkMode || blackjack?.open || !dragLook || event.button !== 0) return;
   dragging = true;
   lastPointerX = event.clientX;
   lastPointerY = event.clientY;
@@ -1631,7 +1632,7 @@ canvas.addEventListener("pointerdown", (event) => {
 });
 
 canvas.addEventListener("pointermove", (event) => {
-  if (!dragging || !walkMode || !dragLook) return;
+  if (!dragging || !walkMode || blackjack?.open || !dragLook) return;
 
   const dx = event.movementX || event.clientX - lastPointerX;
   const dy = event.movementY || event.clientY - lastPointerY;
