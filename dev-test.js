@@ -18,6 +18,14 @@ export function getTestSetup({ dock, tinny, doorAzimuth, roomFloor, spawn, spawn
       fishing: true,
     };
   }
+  if (scenario === "fisherman") {
+    const barrelX = dock.barrelPositions.reduce((sum, p) => sum + p.x, 0);
+    const x = barrelX >= 0 ? -0.58 : 0.58;
+    return {
+      position: dock.group.localToWorld(new THREE.Vector3(x, dock.deckY, dock.deckEnd - 2.2)),
+      lookAt: dock.group.localToWorld(new THREE.Vector3(x, dock.deckY + 1.05, dock.deckEnd - 0.31)),
+    };
+  }
   if (scenario === "dock") {
     return {
       position: dock.group.localToWorld(new THREE.Vector3(0, dock.deckY, dock.deckEnd - 3)),
