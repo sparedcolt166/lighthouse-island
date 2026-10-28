@@ -1,3 +1,4 @@
+import { createFootsteps } from "./footsteps.js";
 import * as THREE from "three";
 
 // Peaks land around -10 dBFS: audible on laptop speakers, never clipping.
@@ -8,6 +9,7 @@ export function createAmbientAudio() {
   let master, outside, outsideFilter;
   let muted = false;
   let nextGull = 0, nextNote = 0, nextPad = 0, nextListener = 0;
+  let footsteps = null;
   let sheltered = false;
   let broken = false;
   const forward = new THREE.Vector3();
@@ -58,6 +60,7 @@ export function createAmbientAudio() {
       samples[i] *= fade;
       samples[samples.length - 1 - i] *= fade;
     }
+    footsteps = createFootsteps(context, master, noise);
     // Two slow, independent swells keep the repeating noise bed unobtrusive.
     makeBed(noise, 650, 0.16, 0.075, 0.10);
     makeBed(noise, 1800, 0.035, 0.043, 0.018);
@@ -162,6 +165,14 @@ export function createAmbientAudio() {
   }
 
   return {
+    movementSound(action, ...args) {
+      try {
+        if (footsteps) footsteps[action](...args);
+      } catch (error) {
+        console.warn("Movement audio unavailable", error);
+        footsteps = null;
+      }
+    },
     start() {
       try {
         if (!context && !initialize()) return;
