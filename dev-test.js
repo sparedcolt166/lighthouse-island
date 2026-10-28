@@ -18,6 +18,14 @@ export function getTestSetup({ dock, tinny, doorAzimuth, roomFloor, spawn, spawn
       lookAt: tinny.group.localToWorld(new THREE.Vector3(0, 0.1, 1)),
     };
   }
+  if (scenario === "blackjack") {
+    const angle = doorAzimuth + LADDER_OFFSET;
+    return {
+      position: new THREE.Vector3(Math.sin(angle) * 0.25, roomFloor + 3.8, Math.cos(angle) * 0.25),
+      lookAt: new THREE.Vector3(-Math.sin(angle), roomFloor + 4.8, -Math.cos(angle)),
+      fromY: roomFloor + 4.1,
+    };
+  }
   if (scenario === "ladder") {
     const angle = doorAzimuth + LADDER_OFFSET;
     return {

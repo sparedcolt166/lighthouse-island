@@ -15,6 +15,7 @@ import { showToast } from "./toast.js";
 import { createAttractCamera } from "./attract.js";
 import { createBookCover } from "./book-cover.js";
 import { buildUpperRoom } from "./upper-room.js";
+import { buildBlackjack } from "./blackjack.js";
 
 // ---------------------------------------------------------------------------
 // Page bits
@@ -398,6 +399,7 @@ let doorOpenAngle = -1.92;
 let doorAzimuth = Math.PI / 4;
 let interiorGroup = null;
 let upperRoom = null;
+let blackjack = null;
 
 const cameraEuler = new THREE.Euler(0, 0, 0, "YXZ");
 const moveDirection = new THREE.Vector3();
@@ -414,6 +416,7 @@ function sampleGround(x, z, fromY = 20) {
 
 // Do not let the upper floor's raycast hide the floor beneath it.
 function samplePlayerGround(x, z, feetY) {
+  if (upperRoom && feetY >= upperRoom.ceilingY - 0.05 && feetY < upperRoom.ceilingY + 0.3 && Math.hypot(x, z) < 1.5) return upperRoom.ceilingY;
   let fromY = feetY + 3.2;
   if (upperRoom && Math.hypot(x, z) < 2 && feetY >= upperRoom.floorY - 1 && feetY < upperRoom.ceilingY - 0.05) {
     fromY = Math.min(fromY, upperRoom.ceilingY - 0.05);
@@ -518,6 +521,7 @@ function resetPlayer() {
 // ---------------------------------------------------------------------------
 
 window.addEventListener("keydown", (event) => {
+  if (blackjack && blackjack.key(event)) return;
   if (event.code === "Escape" && walkMode && !pointerLook) {
     pauseWalkabout();
     return;
@@ -541,6 +545,8 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "KeyE" && !event.repeat && walkMode) {
     if (canUseDoor()) toggleDoor();
     else if (fisherman && fisherman.canInteract(camera)) fisherman.interact(player.feet);
+    else if (upperRoom && upperRoom.prompt(player, camera)) upperRoom.interact(player, camera);
+    else if (blackjack && blackjack.canInteract(camera)) blackjack.interact();
   }
   if (event.code === "KeyR" && walkMode) resetPlayer();
   if (event.code === "KeyM" && !event.repeat && walkMode) showToast(ambientAudio.toggleMute() ? "Sound muted" : "Sound on", 2500);
@@ -560,7 +566,7 @@ window.addEventListener("blur", () => {
 // ---------------------------------------------------------------------------
 
 function updatePlayer(dt) {
-  if (!walkMode || !player.ready) return;
+  if (!walkMode || !player.ready || blackjack?.open) return;
 
   cameraEuler.setFromQuaternion(camera.quaternion);
   if (testSetup) {
@@ -588,7 +594,7 @@ function updatePlayer(dt) {
   const wantsToMove = moveDirection.lengthSq() > 0;
   if (wantsToMove) moveDirection.normalize();
 
-  if (upperRoom && upperRoom.update(player, forward, forwardInput, jumpQueued, dt)) {
+  if (upperRoom && upperRoom.update(player, forward, forwardInput, jumpQueued, dt, camera)) {
     jumpQueued = false;
     player.eyeY = THREE.MathUtils.damp(player.eyeY, player.feet.y + EYE_HEIGHT, 16, dt);
     camera.position.set(player.feet.x, player.eyeY, player.feet.z);
@@ -1337,6 +1343,10 @@ function buildInterior(floorY, roomRadius) {
   crate.add(crateSmall);
 
   upperRoom = buildUpperRoom(scene, groundTargets, azimuth, floorY, ceilingY);
+  blackjack = buildBlackjack(scene, azimuth, ceilingY, () => {
+    keys.clear(); jumpQueued = false;
+    if (document.pointerLockElement) document.exitPointerLock();
+  }, () => { keys.clear(); enableDragLook(true); });
 
   // The furniture is solid so the room feels like a room, not a stage set.
   const addInteriorCollider = (angle, distance, radius) => {
@@ -1440,9 +1450,14 @@ function updateDoor(dt) {
 
   const near = walkMode && canUseDoor();
   const nearFisherman = walkMode && !near && fisherman && fisherman.canInteract(camera);
-  interact.classList.toggle("visible", !!(near || nearFisherman));
+  const ladderPrompt = walkMode && !near && !nearFisherman && upperRoom ? upperRoom.prompt(player, camera) : "";
+  const nearBlackjack = walkMode && !near && !nearFisherman && !ladderPrompt && blackjack && !blackjack.open && blackjack.canInteract(camera);
+  interact.classList.toggle("visible", !!(near || nearFisherman || ladderPrompt || nearBlackjack));
+  interact.querySelector("kbd").hidden = ladderPrompt.startsWith("W/S");
   if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
   else if (nearFisherman) interactLabel.textContent = "Talk to the fisherman";
+  else if (ladderPrompt) interactLabel.textContent = ladderPrompt;
+  else if (nearBlackjack) interactLabel.textContent = "Play blackjack";
 }
 
 // ---------------------------------------------------------------------------
@@ -1530,7 +1545,7 @@ controls.addEventListener("lock", () => {
 });
 
 controls.addEventListener("unlock", () => {
-  if (!walkMode) return;
+  if (!walkMode || blackjack?.open) return;
   pointerLook = false;
   pauseWalkabout();
 });
@@ -1604,6 +1619,7 @@ function animate() {
   attract.update(dt);
   updatePlayer(dt);
   if (fisherman) fisherman.update(dt, elapsed, player.feet);
+  if (blackjack) blackjack.update(elapsed, camera);
   if (tinny) tinny.update(elapsed);
   if (seagulls) seagulls.update(dt, elapsed, player.feet);
   if (ships) ships.update(dt, elapsed);

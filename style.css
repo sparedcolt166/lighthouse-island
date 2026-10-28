@@ -428,3 +428,13 @@ kbd {
   opacity: 0;
   animation: none;
 }
+
+.blackjack-overlay { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: rgba(3, 13, 18, 0.78); }
+.blackjack-overlay[hidden] { display: none; }
+.blackjack-panel { width: min(570px, 100%); padding: 32px; border: 1px solid var(--line); background: #0b232c; box-shadow: 0 30px 100px #0009; }
+.blackjack-panel h2 { margin: 0 0 18px; font: 2rem var(--serif); color: var(--gold); }
+.blackjack-status { color: var(--gold); }
+.blackjack-cards { min-height: 2em; padding: 14px; background: #194c39; font-size: 1.2rem; }
+.blackjack-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.blackjack-controls button { padding: 10px 14px; border: 1px solid var(--line); background: #173944; color: var(--cream); cursor: pointer; }
+.blackjack-controls button:disabled { opacity: 0.4; cursor: default; }
