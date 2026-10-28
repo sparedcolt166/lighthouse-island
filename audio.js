@@ -165,6 +165,7 @@ export function createAmbientAudio() {
   }
 
   return {
+    getChain() { return context && master ? { context, master } : null; },
     movementSound(action, ...args) {
       try {
         if (footsteps) footsteps[action](...args);
