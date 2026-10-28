@@ -3,6 +3,7 @@ import { PointerLockControls } from "./vendor/controls/PointerLockControls.js";
 import { GLTFLoader } from "./vendor/loaders/GLTFLoader.js";
 import { buildDock } from "./dock.js";
 import { buildIslands } from "./islands.js";
+import { buildHeadland } from "./headland.js";
 import { buildFisherman } from "./fisherman.js";
 import { buildBrunson } from "./brunson.js";
 import { buildFishing } from "./fishing.js";
@@ -374,6 +375,7 @@ const groundTargets = [];
 let lastGroundHit = null;
 const sea = createWaterSystem(scene, groundTargets);
 let islands = null;
+let headland = null;
 let dock = null;
 let fisherman = null;
 let brunson = null;
@@ -1426,6 +1428,7 @@ function onModelLoaded(gltf) {
   // drops below its default minGround (1.3m, the island's old waterline).
   islands = buildIslands(scene, groundTargets, colliders, sampleGround);
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
+  headland = buildHeadland(scene, groundTargets, colliders, sampleGround);
   fisherman = buildFisherman(dock, colliders);
   brunson = buildBrunson(dock, colliders, sampleGround);
   fishing = buildFishing(scene, camera, dock, canvas, () => walkMode);
@@ -1688,6 +1691,7 @@ function animate() {
   if (seagulls) seagulls.update(dt, elapsed, player.feet);
   if (ships) ships.update(dt, elapsed);
   if (islands) islands.update(elapsed);
+  if (headland) headland.update(elapsed);
   if (walkMode) ambientAudio.update(camera, player.feet, seagulls?.gulls, ROOM_FLOOR, TOWER_RADIUS);
   sea.update(camera.position.y, dt);
   updateDoor(dt);

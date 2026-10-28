@@ -11,6 +11,9 @@ export function getTestSetup({ dock, tinny, doorAzimuth, roomFloor, spawn, spawn
   if (!["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)) return null;
   const scenario = new URLSearchParams(window.location.search).get("test");
   if (scenario === "controls" || scenario === "night" || scenario === "rain") return { position: spawn.clone(), lookAt: spawnLook.clone() };
+  if (scenario === "headland") {
+    return { position: new THREE.Vector3(-18, 1.5, -7), lookAt: new THREE.Vector3(-24, 2, -8) };
+  }
   if (scenario === "fishing") {
     return {
       position: dock.group.localToWorld(new THREE.Vector3(-0.8, dock.deckY, dock.deckEnd - 3)),
