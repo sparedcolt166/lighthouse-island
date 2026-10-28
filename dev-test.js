@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { SHRINE_ANGLE_OFFSET } from "./brunson.js";
 import { LADDER_OFFSET } from "./upper-room.js";
 
 export function isRainTest() {
@@ -36,6 +37,14 @@ export function getTestSetup({ dock, tinny, doorAzimuth, roomFloor, spawn, spawn
       position: new THREE.Vector3(Math.sin(angle) * 0.25, roomFloor + 3.8, Math.cos(angle) * 0.25),
       lookAt: new THREE.Vector3(-Math.sin(angle), roomFloor + 4.8, -Math.cos(angle)),
       fromY: roomFloor + 4.1,
+    };
+  }
+  if (scenario === "shrine") {
+    const angle = doorAzimuth + SHRINE_ANGLE_OFFSET;
+    return {
+      position: new THREE.Vector3(Math.sin(angle) * 0.35, roomFloor, Math.cos(angle) * 0.35),
+      lookAt: new THREE.Vector3(Math.sin(angle) * 1.7, roomFloor + 1.0, Math.cos(angle) * 1.7),
+      fromY: roomFloor + 2,
     };
   }
   if (scenario === "ladder") {

@@ -4,7 +4,7 @@ import { GLTFLoader } from "./vendor/loaders/GLTFLoader.js";
 import { buildDock } from "./dock.js";
 import { buildIslands } from "./islands.js";
 import { buildFisherman } from "./fisherman.js";
-import { buildBrunson } from "./brunson.js";
+import { buildBrunson, buildBrunsonShrine } from "./brunson.js";
 import { buildFishing } from "./fishing.js";
 import { buildTinny } from "./tinny.js";
 import { buildSeagulls } from "./seagulls.js";
@@ -377,6 +377,7 @@ let islands = null;
 let dock = null;
 let fisherman = null;
 let brunson = null;
+let brunsonShrine = null;
 let fishing = null;
 let tinny = null;
 let seagulls = null;
@@ -1402,6 +1403,7 @@ function buildInterior(floorY, roomRadius) {
   addInteriorCollider(backAngle, tableRadius, 0.46);
   addInteriorCollider(barrelAngle, 1.47, 0.34);
   addInteriorCollider(crateAngle, 1.43, 0.42);
+  brunsonShrine = buildBrunsonShrine(group, azimuth, floorY, roomRadius, colliders);
 }
 
 function forWallFacing(angle) {
@@ -1427,7 +1429,7 @@ function onModelLoaded(gltf) {
   islands = buildIslands(scene, groundTargets, colliders, sampleGround);
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
   fisherman = buildFisherman(dock, colliders);
-  brunson = buildBrunson(dock, colliders, sampleGround);
+  brunson = buildBrunson(dock, colliders);
   fishing = buildFishing(scene, camera, dock, canvas, () => walkMode);
   tinny = buildTinny(dock, groundTargets, sea, solidAt);
   seagulls = buildSeagulls(scene, model);
@@ -1682,6 +1684,7 @@ function animate() {
   updatePlayer(dt);
   if (fisherman) fisherman.update(dt, elapsed, player.feet);
   if (brunson) brunson.update(dt, elapsed, player.feet);
+  if (brunsonShrine) brunsonShrine.update(elapsed);
   if (fishing) fishing.update(dt, elapsed);
   if (blackjack) blackjack.update(elapsed, camera);
   if (tinny) tinny.update(elapsed);
