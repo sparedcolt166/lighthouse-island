@@ -13,6 +13,7 @@ import { createAmbientAudio } from "./audio.js";
 import { getTestSetup, isRainTest } from "./dev-test.js";
 import { settleGround } from "./ground.js";
 import { createWaterSystem } from "./water.js";
+import { createWaterGraphics, setQuality, getQuality } from "./water-graphics.js";
 import { showToast } from "./toast.js";
 import { createAttractCamera } from "./attract.js";
 import { createBookCover } from "./book-cover.js";
@@ -385,6 +386,7 @@ const ambientAudio = createAmbientAudio();
 const weather = createWeather(scene, camera, cloudMaterial, sampleGround, ROOM_FLOOR, TOWER_RADIUS, isRainTest());
 let testSetup = null;
 let dayNight = null;
+let waterGraphics = null;
 const keys = new Set();
 let jumpQueued = false;
 let model = null;
@@ -1426,6 +1428,7 @@ function onModelLoaded(gltf) {
   // drops below its default minGround (1.3m, the island's old waterline).
   islands = buildIslands(scene, groundTargets, colliders, sampleGround);
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
+  waterGraphics = createWaterGraphics({ scene, camera, renderer, water, waterMaterial, sunLight, dock });
   fisherman = buildFisherman(dock, colliders);
   brunson = buildBrunson(dock, colliders, sampleGround);
   fishing = buildFishing(scene, camera, dock, canvas, () => walkMode);
@@ -1675,7 +1678,8 @@ const clock = new THREE.Clock();
 let elapsed = 0;
 
 function animate() {
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const frameTime = clock.getDelta();
+  const dt = Math.min(frameTime, 0.05);
   elapsed += dt;
 
   attract.update(dt);
@@ -1697,6 +1701,7 @@ function animate() {
   waterNormal.offset.y = (waterNormal.offset.y - dt * 0.008 + 1) % 1;
 
   if (dayNight) dayNight.update(dt);
+  if (waterGraphics) waterGraphics.update(elapsed, dayNight ? dayNight.getDaylight() : 1, frameTime);
 
   renderer.render(scene, camera);
 }
@@ -1706,13 +1711,16 @@ renderer.setAnimationLoop(animate);
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  if (waterGraphics) waterGraphics.resize();
+  else renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
 // Handy for poking at the scene from the browser console.
 window.__lighthouse = {
   THREE,
+  setQuality,
+  getQuality,
   scene,
   camera,
   controls,
