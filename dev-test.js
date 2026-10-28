@@ -5,7 +5,7 @@ import { LADDER_OFFSET } from "./upper-room.js";
 export function getTestSetup({ dock, tinny, doorAzimuth, roomFloor, spawn, spawnLook }) {
   if (!["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)) return null;
   const scenario = new URLSearchParams(window.location.search).get("test");
-  if (scenario === "controls") return { position: spawn.clone(), lookAt: spawnLook.clone() };
+  if (scenario === "controls" || scenario === "night") return { position: spawn.clone(), lookAt: spawnLook.clone() };
   if (scenario === "dock") {
     return {
       position: dock.group.localToWorld(new THREE.Vector3(0, dock.deckY, dock.deckEnd - 3)),
