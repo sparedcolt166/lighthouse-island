@@ -428,3 +428,25 @@ kbd {
   opacity: 0;
   animation: none;
 }
+
+/* The fishing panel stays out of the way of the shared interaction prompt. */
+.fishing-hud {
+  display: none;
+  position: fixed;
+  right: 22px;
+  bottom: 80px;
+  z-index: 3;
+  max-width: 270px;
+  padding: 10px 12px;
+  background: rgba(4, 16, 22, 0.75);
+  border: 1px solid rgba(243, 230, 210, 0.2);
+  color: rgba(243, 230, 210, 0.9);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  pointer-events: none;
+}
+.fishing-meter { height: 6px; margin: 7px 0; background: #293b3c; }
+.fishing-meter.tension { background: linear-gradient(to right, #293b3c 75%, #923f37 75%); }
+.fishing-meter-fill { height: 100%; background: #c1b18b; }
+.fishing-tally { margin-top: 5px; opacity: 0.75; }

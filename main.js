@@ -4,6 +4,7 @@ import { GLTFLoader } from "./vendor/loaders/GLTFLoader.js";
 import { buildDock } from "./dock.js";
 import { buildIslands } from "./islands.js";
 import { buildFisherman } from "./fisherman.js";
+import { buildFishing } from "./fishing.js";
 import { buildTinny } from "./tinny.js";
 import { buildSeagulls } from "./seagulls.js";
 import { buildShips } from "./ships.js";
@@ -370,6 +371,7 @@ const sea = createWaterSystem(scene, groundTargets);
 let islands = null;
 let dock = null;
 let fisherman = null;
+let fishing = null;
 let tinny = null;
 let seagulls = null;
 let ships = null;
@@ -540,6 +542,7 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "Space" && !event.repeat && walkMode) jumpQueued = true;
   if (event.code === "KeyE" && !event.repeat && walkMode) {
     if (canUseDoor()) toggleDoor();
+    else if (fishing && fishing.canInteract(camera)) fishing.interact();
     else if (fisherman && fisherman.canInteract(camera)) fisherman.interact(player.feet);
   }
   if (event.code === "KeyR" && walkMode) resetPlayer();
@@ -1372,10 +1375,12 @@ function onModelLoaded(gltf) {
   islands = buildIslands(scene, groundTargets, colliders, sampleGround);
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
   fisherman = buildFisherman(dock, colliders);
+  fishing = buildFishing(scene, camera, dock, canvas, () => walkMode);
   tinny = buildTinny(dock, groundTargets);
   seagulls = buildSeagulls(scene, model);
   ships = buildShips(scene);
   testSetup = getTestSetup({ dock, tinny, doorAzimuth, roomFloor: ROOM_FLOOR, spawn: SPAWN, spawnLook: SPAWN_LOOK });
+  if (testSetup?.fishing) fishing.giveRod();
 
   player.ready = true;
   enterButton.disabled = false;
@@ -1439,9 +1444,11 @@ function updateDoor(dt) {
   }
 
   const near = walkMode && canUseDoor();
-  const nearFisherman = walkMode && !near && fisherman && fisherman.canInteract(camera);
-  interact.classList.toggle("visible", !!(near || nearFisherman));
+  const fishingAction = walkMode && !near && fishing && fishing.canInteract(camera);
+  const nearFisherman = walkMode && !near && !fishingAction && fisherman && fisherman.canInteract(camera);
+  interact.classList.toggle("visible", !!(near || fishingAction || nearFisherman));
   if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
+  else if (fishingAction) interactLabel.textContent = fishingAction === "pickup" ? "Pick up the rod" : fishingAction === "return" ? "Put back the rod" : "Put fish in the bucket";
   else if (nearFisherman) interactLabel.textContent = "Talk to the fisherman";
 }
 
@@ -1604,6 +1611,7 @@ function animate() {
   attract.update(dt);
   updatePlayer(dt);
   if (fisherman) fisherman.update(dt, elapsed, player.feet);
+  if (fishing) fishing.update(dt, elapsed);
   if (tinny) tinny.update(elapsed);
   if (seagulls) seagulls.update(dt, elapsed, player.feet);
   if (ships) ships.update(dt, elapsed);
