@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { showToast } from "./toast.js";
+import { characterPart, roundedLimb, characterHand, characterFace } from "./character-kit.js";
 
 // Animation tuning: speeds are radians/second, distances are metres.
 const TUNING = {
@@ -23,17 +24,39 @@ export function buildFisherman(dock, colliders) {
   const material = (color) => new THREE.MeshStandardMaterial({
     color, roughness: 0.93, flatShading: true,
   });
-  const coat = material(0xb39a49);
+  // A tiny woven canvas adds texture without an external image or extra geometry.
+  const knitCanvas = document.createElement("canvas");
+  knitCanvas.width = knitCanvas.height = 64;
+  const knitContext = knitCanvas.getContext("2d");
+  knitContext.fillStyle = "#e1d5b7";
+  knitContext.fillRect(0, 0, 64, 64);
+  knitContext.strokeStyle = "#b9ac90";
+  knitContext.lineWidth = 1;
+  for (let y = 0; y < 64; y += 4) {
+    for (let x = 0; x < 64; x += 4) {
+      knitContext.beginPath();
+      knitContext.moveTo(x, y);
+      knitContext.lineTo(x + 2, y + 3);
+      knitContext.lineTo(x + 4, y);
+      knitContext.stroke();
+    }
+  }
+  const knitTexture = new THREE.CanvasTexture(knitCanvas);
+  knitTexture.wrapS = knitTexture.wrapT = THREE.RepeatWrapping;
+  knitTexture.repeat.set(3, 3);
+  knitTexture.colorSpace = THREE.SRGBColorSpace;
+  const coat = new THREE.MeshStandardMaterial({ color: 0xc0ae84, map: knitTexture, roughness: 1 });
+  const knitDetail = material(0x9d8c69);
   const trousers = material(0x454b4b);
   const skin = material(0xc89572);
   const beard = material(0x777063);
-  const hat = material(0x706e52);
+  const hat = material(0x516d67);
+  const hatRib = material(0x3f5c57);
   const boots = material(0x343b39);
   const rodMaterial = material(0x5c4933);
   const red = material(0xa94b3e);
   const white = material(0xd4c5a5);
-  const sphere = new THREE.SphereGeometry(1, 8, 6);
-  const box = new THREE.BoxGeometry(1, 1, 1);
+  const sphere = new THREE.SphereGeometry(1, 16, 12);
   const cylinder = new THREE.CylinderGeometry(1, 1, 1, 7);
   const mesh = (parent, geometry, mat, position, scale) => {
     const part = new THREE.Mesh(geometry, mat);
@@ -61,12 +84,10 @@ export function buildFisherman(dock, colliders) {
   mesh(torso, sphere, coat, [0, 0.33, 0], [0.31, 0.37, 0.24]);
   const belly = mesh(torso, sphere, coat, [0, 0.24, 0.15], [0.28, 0.24, 0.20]);
   const head = joint(torso, 0, 0.68, 0);
-  mesh(head, sphere, skin, [0, 0.23, 0], [0.25, 0.26, 0.24]);
-  mesh(head, sphere, beard, [0, 0.12, 0.14], [0.22, 0.15, 0.15]);
-  mesh(head, sphere, skin, [0, 0.25, 0.23], [0.075, 0.08, 0.10]);
-  for (const side of [-1, 1]) {
-    mesh(head, sphere, boots, [side * 0.09, 0.29, 0.213], [0.022, 0.025, 0.015]);
-  }
+  characterFace(head, {
+    skin, beard, eyeWhite: material(0xeee8d9), pupil: material(0x303735),
+    brow: beard, mouth: material(0x4c3832),
+  });
   // A short cigarette sits in front of the beard and follows every head turn.
   const cigarette = joint(head, 0.09, 0.12, 0.275);
   cigarette.rotation.x = Math.PI / 2 - 0.18;
@@ -91,17 +112,38 @@ export function buildFisherman(dock, colliders) {
     return sprite;
   });
   const hatJoint = joint(head, 0, 0.43, 0);
-  mesh(hatJoint, cylinder, hat, [0, 0.06, 0], [0.24, 0.16, 0.24]);
-  mesh(hatJoint, cylinder, hat, [0, -0.015, 0], [0.30, 0.045, 0.30]);
+  characterPart(hatJoint, hat, [0, 0.075, 0], [0.235, 0.18, 0.215]);
+  const brim = mesh(hatJoint, new THREE.TorusGeometry(0.21, 0.045, 8, 20), hatRib, [0, -0.015, 0], [1, 1, 0.92]);
+  brim.rotation.x = Math.PI / 2;
+  characterPart(hatJoint, hatRib, [0, 0.25, 0], [0.045, 0.04, 0.045]);
+
+  // Raised, alternating stitches give the jumper a handmade cable-knit silhouette.
+  for (const xOffset of [-0.18, -0.09, 0, 0.09, 0.18]) {
+    const points = [];
+    for (let i = 0; i <= 16; i += 1) {
+      const y = 0.12 + i * 0.028;
+      const stitchX = xOffset + Math.sin(i * 0.8) * 0.012;
+      const bodySurface = 0.24 * Math.sqrt(Math.max(0, 1 - (stitchX / 0.31) ** 2 - ((y - 0.33) / 0.37) ** 2));
+      const bellySurface = 0.15 + 0.20 * Math.sqrt(Math.max(0, 1 - (stitchX / 0.28) ** 2 - ((y - 0.24) / 0.24) ** 2));
+      points.push(new THREE.Vector3(stitchX, y, Math.max(bodySurface, bellySurface) + 0.008));
+    }
+    const cable = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 24, 0.008, 5, false), knitDetail);
+    torso.add(cable);
+  }
+  const collar = mesh(torso, new THREE.TorusGeometry(0.16, 0.032, 8, 20), knitDetail, [0, 0.66, 0], [1, 1, 0.85]);
+  collar.rotation.x = Math.PI / 2;
 
   const legs = [];
   for (const side of [-1, 1]) {
     const upper = joint(hips, side * 0.17, 0.12, 0.04);
-    mesh(upper, box, trousers, [0, 0, 0.16], [0.22, 0.20, 0.38]);
+    characterPart(upper, trousers, [0, 0, 0.16], [0.12, 0.11, 0.23]);
     const lower = joint(upper, 0, 0, 0.34);
-    mesh(lower, box, trousers, [0, -0.18, 0], [0.18, 0.38, 0.18]);
+    characterPart(lower, trousers, [0, -0.18, 0], [0.10, 0.23, 0.10]);
+    characterPart(lower, knitDetail, [0, -0.30, 0], [0.105, 0.045, 0.105]);
     const boot = joint(lower, 0, -0.38, 0);
-    mesh(boot, box, boots, [0, -0.04, 0.055], [0.21, 0.16, 0.30]);
+    characterPart(boot, boots, [0, 0.055, 0], [0.105, 0.19, 0.105]);
+    characterPart(boot, boots, [0, -0.045, 0.065], [0.11, 0.09, 0.17]);
+    characterPart(boot, material(0x252d2b), [0, -0.105, 0.065], [0.112, 0.025, 0.17]);
     legs.push({ upper, lower });
   }
 
@@ -113,11 +155,11 @@ export function buildFisherman(dock, colliders) {
   const grips = [-0.07, 0.24].map((y) => joint(rod, 0, y, 0));
   const arms = [-1, 1].map((side) => {
     const shoulder = joint(torso, side * 0.28, 0.54, 0);
-    const upperMesh = mesh(shoulder, cylinder, coat, [0, -0.14, 0], [0.105, 0.28, 0.105]);
+    const upperMesh = roundedLimb(shoulder, coat, 0.115, 0.28);
     const elbow = joint(shoulder, 0, -0.28, 0);
-    const lowerMesh = mesh(elbow, cylinder, coat, [0, -0.13, 0], [0.09, 0.26, 0.09]);
+    const lowerMesh = roundedLimb(elbow, coat, 0.095, 0.26);
     const hand = joint(elbow, 0, -0.26, 0);
-    mesh(hand, sphere, skin, [0, 0, 0], [0.115, 0.11, 0.11]);
+    characterHand(hand, skin, side);
     return { shoulder, upperMesh, elbow, lowerMesh, hand, side };
   });
   const float = joint(dock.group, x, 0, dock.deckEnd + 3.1);
@@ -269,7 +311,7 @@ export function buildFisherman(dock, colliders) {
     return length;
   };
 
-  function update(delta, elapsed, playerPosition) {
+  function updatePose(delta, elapsed, playerPosition) {
     if (elapsed >= nextIdle) {
       idleStart = elapsed;
       idleType = Math.floor(random() * 4);
@@ -349,6 +391,17 @@ export function buildFisherman(dock, colliders) {
       linePositions.set([c.x, c.y, c.z], i * 3);
     }
     lineGeometry.attributes.position.needsUpdate = true;
+  }
+  let animationFailed = false;
+  function update(delta, elapsed, playerPosition) {
+    if (animationFailed) return;
+    try {
+      updatePose(delta, elapsed, playerPosition);
+    } catch (error) {
+      // A character animation must never stop the rest of the island rendering.
+      animationFailed = true;
+      console.error("Fisherman animation stopped", error);
+    }
   }
   return { update, canInteract, interact };
 }
