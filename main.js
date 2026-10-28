@@ -516,6 +516,7 @@ function placeAtStart() {
   else placePlayer(SPAWN);
 }
 function resetPlayer() {
+  sea.reset();
   if (upperRoom) upperRoom.reset();
   placeAtStart();
   player.started = true;
@@ -612,6 +613,10 @@ function updatePlayer(dt) {
   }
 
   const running = keys.has("ShiftLeft") || keys.has("ShiftRight");
+  if (sea.swim(player, moveDirection, wantsToMove, running, keys, EYE_HEIGHT, dt, sampleGround, solidAt, camera)) {
+    jumpQueued = false;
+    return;
+  }
   const speed = (running ? RUN_SPEED : WALK_SPEED) * sea.speedFactor(player.feet.y);
 
   // Move each horizontal axis on its own so walls can be slid along.
