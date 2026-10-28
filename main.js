@@ -16,6 +16,7 @@ import { showToast } from "./toast.js";
 import { createAttractCamera } from "./attract.js";
 import { createBookCover } from "./book-cover.js";
 import { buildUpperRoom } from "./upper-room.js";
+import { buildDayNight } from "./daynight.js";
 
 // ---------------------------------------------------------------------------
 // Page bits
@@ -377,6 +378,7 @@ let seagulls = null;
 let ships = null;
 const ambientAudio = createAmbientAudio();
 let testSetup = null;
+let dayNight = null;
 const keys = new Set();
 let jumpQueued = false;
 let model = null;
@@ -546,6 +548,7 @@ window.addEventListener("keydown", (event) => {
     else if (brunson && brunson.canInteract(camera)) brunson.interact();
   }
   if (event.code === "KeyR" && walkMode) resetPlayer();
+  if (event.code === "KeyT" && !event.repeat && testSetup && dayNight) showToast(`Time speed: ${dayNight.toggleSpeed()}x`, 2500);
   if (event.code === "KeyM" && !event.repeat && walkMode) showToast(ambientAudio.toggleMute() ? "Sound muted" : "Sound on", 2500);
 });
 
@@ -1380,6 +1383,7 @@ function onModelLoaded(gltf) {
   seagulls = buildSeagulls(scene, model);
   ships = buildShips(scene);
   testSetup = getTestSetup({ dock, tinny, doorAzimuth, roomFloor: ROOM_FLOOR, spawn: SPAWN, spawnLook: SPAWN_LOOK });
+  dayNight = buildDayNight({ scene, skyMaterial, sunSprite, sunLight, hemisphereLight, cloudMaterial, waterMaterial, lanternLight, lanternGlowMaterial, model, testSetup });
 
   player.ready = true;
   enterButton.disabled = false;
@@ -1622,9 +1626,7 @@ function animate() {
   waterNormal.offset.x = (waterNormal.offset.x + dt * 0.012) % 1;
   waterNormal.offset.y = (waterNormal.offset.y - dt * 0.008 + 1) % 1;
 
-  const flicker = 0.94 + Math.sin(elapsed * 7.3) * 0.035 + Math.sin(elapsed * 13.1 + 1.7) * 0.02;
-  lanternLight.intensity = 200 * flicker;
-  lanternGlowMaterial.opacity = 0.58 * flicker;
+  if (dayNight) dayNight.update(dt);
 
   renderer.render(scene, camera);
 }
