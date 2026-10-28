@@ -518,6 +518,7 @@ function placeAtStart() {
 function resetPlayer() {
   sea.reset();
   if (upperRoom) upperRoom.reset();
+  if (tinny) tinny.reset();
   placeAtStart();
   player.started = true;
 }
@@ -548,9 +549,12 @@ window.addEventListener("keydown", (event) => {
   keys.add(event.code);
   if (event.code === "Space" && !event.repeat && walkMode) jumpQueued = true;
   if (event.code === "KeyE" && !event.repeat && walkMode) {
-    if (canUseDoor()) toggleDoor();
+    // Same priority as the prompt in updateDoor: the boat first only while rowing.
+    if (tinny && tinny.isRowing()) tinny.interact(player, camera);
+    else if (canUseDoor()) toggleDoor();
     else if (fisherman && fisherman.canInteract(camera)) fisherman.interact(player.feet);
     else if (brunson && brunson.canInteract(camera)) brunson.interact();
+    else if (tinny && tinny.canInteract(camera)) tinny.interact(player, camera);
   }
   if (event.code === "KeyR" && walkMode) resetPlayer();
   if (event.code === "KeyT" && !event.repeat && testSetup && dayNight) showToast(`Time speed: ${dayNight.toggleSpeed()}x`, 2500);
@@ -603,6 +607,11 @@ function updatePlayer(dt) {
   moveDirection.addScaledVector(right, sideInput);
   const wantsToMove = moveDirection.lengthSq() > 0;
   if (wantsToMove) moveDirection.normalize();
+
+  if (tinny && tinny.updateRowing(player, camera, forwardInput, sideInput, dt)) {
+    jumpQueued = false;
+    return;
+  }
 
   if (upperRoom && upperRoom.update(player, forward, forwardInput, jumpQueued, dt)) {
     jumpQueued = false;
@@ -1406,7 +1415,7 @@ function onModelLoaded(gltf) {
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
   fisherman = buildFisherman(dock, colliders);
   brunson = buildBrunson(dock, colliders, sampleGround);
-  tinny = buildTinny(dock, groundTargets);
+  tinny = buildTinny(dock, groundTargets, sea, solidAt);
   seagulls = buildSeagulls(scene, model);
   ships = buildShips(scene);
   testSetup = getTestSetup({ dock, tinny, doorAzimuth, roomFloor: ROOM_FLOOR, spawn: SPAWN, spawnLook: SPAWN_LOOK });
@@ -1477,10 +1486,16 @@ function updateDoor(dt) {
   const near = walkMode && canUseDoor();
   const nearFisherman = walkMode && !near && fisherman && fisherman.canInteract(camera);
   const nearBrunson = walkMode && !near && !nearFisherman && brunson && brunson.canInteract(camera);
-  interact.classList.toggle("visible", !!(near || nearFisherman || nearBrunson));
-  if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
+  // The boat is moored right beside the fisherman, so it only takes the
+  // prompt first while rowing; on foot, whatever you're looking at wins.
+  const rowing = tinny && tinny.isRowing();
+  const nearTinny = walkMode && tinny && (rowing || (!near && !nearFisherman && !nearBrunson)) && tinny.canInteract(camera);
+  interact.classList.toggle("visible", !!(near || nearFisherman || nearBrunson || nearTinny));
+  if (rowing && nearTinny) interactLabel.textContent = "Leave the boat";
+  else if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
   else if (nearFisherman) interactLabel.textContent = "Bother the fisherman";
   else if (nearBrunson) interactLabel.textContent = "Talk to Jalen";
+  else if (nearTinny) interactLabel.textContent = "Row the boat";
 }
 
 // ---------------------------------------------------------------------------
