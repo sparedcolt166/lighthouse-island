@@ -1,13 +1,35 @@
-﻿import * as THREE from "three";
+import * as THREE from "three";
 import { showToast } from "./toast.js";
 
-export function buildBrunson(dock, colliders, sampleGround) {
+export const SHRINE_ANGLE_OFFSET = 0.85;
+
+function basketballMaterial() {
+  const canvas = document.createElement("canvas"); canvas.width = 512; canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#c76724"; ctx.fillRect(0, 0, 512, 256);
+  // Repeatable tiny speckles suggest the pebbled leather without extra geometry.
+  for (let i = 0; i < 6000; i++) {
+    const x = (i * 137.508) % 512, y = (i * 73.31) % 256;
+    ctx.fillStyle = i % 2 ? "#dc8137" : "#a84f1b"; ctx.fillRect(x, y, 1.2, 1.2);
+  }
+  ctx.strokeStyle = "#30221b"; ctx.lineWidth = 4;
+  for (const x of [0, 128, 256, 384, 512]) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 256); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(0, 128); ctx.lineTo(512, 128); ctx.stroke();
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshStandardMaterial({ map: texture, roughness: 0.95 });
+}
+function makeBasketball(parent, x, y, z, radius = 0.12) {
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(radius, 24, 16), basketballMaterial());
+  ball.position.set(x, y, z); ball.castShadow = true; parent.add(ball); return ball;
+}
+
+export function buildBrunson(dock, colliders) {
   const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, flatShading: true, ...extra });
   const white = mat(0xf3f0e7), blue = mat(0x006bb6), orange = mat(0xf58426);
   const skin = mat(0x825036), hair = mat(0x211b19), wood = mat(0x70472b);
   const silver = mat(0xcbd2d5, { metalness: 0.86, roughness: 0.2 });
   const gold = mat(0xd8a735, { metalness: 0.75, roughness: 0.25 });
-  const sphere = new THREE.SphereGeometry(1, 10, 8);
+  const sphere = new THREE.SphereGeometry(1, 20, 14);
   const box = new THREE.BoxGeometry(1, 1, 1);
   const cylinder = new THREE.CylinderGeometry(1, 1, 1, 10);
   const mesh = (parent, geometry, material, position, scale) => {
@@ -41,42 +63,45 @@ export function buildBrunson(dock, colliders, sampleGround) {
   const figure = joint(dock.group, x, dock.deckY, z); figure.name = "Jalen Brunson Tribute";
   const world = addCollider(x, z, 0.35);
   const torso = joint(figure, 0, 0.94, 0);
-  mesh(torso, box, jerseyMaterials, [0, 0.34, 0], [0.56, 0.64, 0.31]);
+  // Rounded jersey body with separate flat lettering panels keeps type legible.
+  mesh(torso, sphere, white, [0, 0.34, 0], [0.30, 0.38, 0.18]);
+  for (const side of [-1, 1]) {
+    const panel = mesh(torso, new THREE.PlaneGeometry(0.42, 0.48), jerseyMaterials[side === 1 ? 4 : 5], [0, 0.35, side * 0.177], [1, 1, 1]);
+    if (side < 0) panel.rotation.y = Math.PI;
+    mesh(torso, sphere, skin, [side * 0.285, 0.57, 0], [0.105, 0.105, 0.105]);
+  }
   mesh(torso, box, blue, [0, 0.04, 0], [0.57, 0.045, 0.32]);
   mesh(torso, box, orange, [0, 0.09, 0], [0.57, 0.035, 0.32]);
-  mesh(figure, box, white, [0, 0.88, 0], [0.55, 0.27, 0.32]);
+  mesh(figure, sphere, white, [0, 0.88, 0], [0.29, 0.18, 0.18]);
   for (const side of [-1, 1]) {
     mesh(figure, box, blue, [side * 0.268, 0.89, 0], [0.035, 0.24, 0.33]);
-    mesh(figure, cylinder, skin, [side * 0.15, 0.43, 0], [0.105, 0.68, 0.105]);
-    mesh(figure, box, white, [side * 0.15, 0.075, 0.06], [0.22, 0.15, 0.36]);
+    mesh(figure, sphere, skin, [side * 0.15, 0.48, 0], [0.105, 0.31, 0.105]);
+    mesh(figure, cylinder, white, [side * 0.15, 0.19, 0], [0.108, 0.18, 0.108]);
+    mesh(figure, sphere, white, [side * 0.15, 0.085, 0.06], [0.12, 0.09, 0.20]);
     mesh(figure, box, blue, [side * 0.15, 0.035, 0.06], [0.23, 0.045, 0.37]);
+    for (const laceZ of [0.06, 0.12, 0.18]) mesh(figure, box, blue, [side * 0.15, 0.16, laceZ], [0.12, 0.012, 0.018]);
   }
   const head = joint(torso, 0, 0.71, 0);
   mesh(head, sphere, skin, [0, 0.20, 0], [0.23, 0.26, 0.21]);
   mesh(head, sphere, hair, [0, 0.38, -0.01], [0.23, 0.13, 0.21]);
   mesh(head, sphere, hair, [0, 0.08, 0.13], [0.20, 0.11, 0.12]);
   mesh(head, sphere, skin, [0, 0.22, 0.20], [0.06, 0.07, 0.07]);
-  for (const side of [-1, 1]) mesh(head, sphere, hair, [side * 0.085, 0.26, 0.19], [0.022, 0.025, 0.018]);
+  for (const side of [-1, 1]) {
+    mesh(head, sphere, skin, [side * 0.225, 0.20, 0], [0.045, 0.07, 0.035]);
+    mesh(head, sphere, white, [side * 0.085, 0.26, 0.187], [0.045, 0.029, 0.025]);
+    mesh(head, sphere, hair, [side * 0.085, 0.26, 0.208], [0.018, 0.021, 0.012]);
+    mesh(head, sphere, hair, [side * 0.085, 0.31, 0.185], [0.05, 0.012, 0.014]);
+  }
+  mesh(head, sphere, hair, [0, 0.12, 0.219], [0.065, 0.012, 0.009]);
   const arms = [-1, 1].map((side) => {
     const arm = joint(torso, side * 0.32, 0.56, 0);
-    mesh(arm, cylinder, skin, [0, -0.22, 0], [0.09, 0.43, 0.09]);
-    mesh(arm, sphere, skin, [0, -0.44, 0], [0.095, 0.095, 0.095]);
+    mesh(arm, sphere, skin, [0, -0.22, 0], [0.09, 0.25, 0.09]);
+    mesh(arm, sphere, skin, [0, -0.44, 0], [0.095, 0.095, 0.075]);
+    for (const finger of [-1, 0, 1]) mesh(arm, sphere, skin, [finger * 0.045, -0.51, 0], [0.022, 0.065, 0.025]);
     return arm;
   });
   arms[0].rotation.z = -0.18; arms[1].rotation.z = 0.3;
-  const ballMaterial = mat(0xcc641e);
-  const ballGeometry = new THREE.SphereGeometry(0.12, 12, 8);
-  const seamMaterial = new THREE.MeshBasicMaterial({ color: 0x3c2418 });
-  const makeBall = (parent, bx, by, bz) => {
-    const ball = joint(parent, bx, by, bz);
-    mesh(ball, ballGeometry, ballMaterial, [0, 0, 0], [1, 1, 1]);
-    for (const angle of [0, Math.PI / 2]) {
-      const seam = mesh(ball, new THREE.TorusGeometry(0.121, 0.004, 4, 20), seamMaterial, [0, 0, 0], [1, 1, 1]); seam.rotation.y = angle;
-    }
-    const seam = mesh(ball, new THREE.TorusGeometry(0.121, 0.004, 4, 20), seamMaterial, [0, 0, 0], [1, 1, 1]); seam.rotation.x = Math.PI / 2;
-    return ball;
-  };
-  const ball = makeBall(figure, 0.49, 0.12, 0.15);
+  const ball = makeBasketball(figure, 0.45, 0.12, 0);
 
   // A narrow plinth on the same side keeps the middle of the dock open.
   const trophyZ = z + 1.15;
@@ -89,17 +114,54 @@ export function buildBrunson(dock, colliders, sampleGround) {
   mesh(trophy, new THREE.TorusGeometry(0.22, 0.018, 5, 12), gold, [0, 0.88, 0], [1, 1, 1]).rotation.x = Math.PI / 2;
   mesh(trophy, cylinder, gold, [0, 0.63, 0], [0.11, 0.035, 0.11]);
 
-  // Find a beach position beside the landing, avoiding the stair ground targets.
-  let shrineX = 2.5, shrineZ = -0.8, ground = null;
-  for (const candidate of [[2.5, -0.8], [2.2, -1.5], [-2.5, -0.8], [-2.2, -1.5]]) {
-    const point = dock.group.localToWorld(new THREE.Vector3(candidate[0], 0, candidate[1]));
-    const height = sampleGround(point.x, point.z);
-    if (height !== null && height >= 1.3) { shrineX = candidate[0]; shrineZ = candidate[1]; ground = height; break; }
+  const facing = new THREE.Vector3(), toFigure = new THREE.Vector3(), local = new THREE.Vector3();
+  let celebration = 0, look = 0;
+  const lines = ["Captain Clutch at your service.", "Knicks in 5.", "Let's go New York!", "Keep that light shining!"];
+  function canInteract(camera) {
+    toFigure.set(world.x - camera.position.x, 0, world.z - camera.position.z);
+    const distance = toFigure.length();
+    if (distance > 2.8 || distance < 0.01) return false;
+    camera.getWorldDirection(facing); facing.y = 0; facing.normalize();
+    return facing.dot(toFigure) / distance > 0.77;
   }
-  if (ground !== null) {
-    const shrine = joint(dock.group, shrineX, ground, shrineZ); shrine.name = "Brunson Shrine";
-    shrine.rotation.y = shrineX > 0 ? -0.55 : 0.55;
-    addCollider(shrineX, shrineZ, 0.48);
+  function interact() { celebration = 2; showToast(lines[Math.floor(Math.random() * lines.length)], 4000); }
+  function update(delta, elapsed, playerPosition) {
+    try {
+      const bounce = (1 - Math.cos(elapsed * 6.6)) / 2;
+      ball.position.y = 0.12 + bounce * 0.70;
+      const squash = Math.max(0, 1 - bounce * 8) * 0.22;
+      ball.scale.set(1 + squash * 0.5, 1 - squash, 1 + squash * 0.5);
+      ball.position.y -= 0.12 * squash;
+      arms[1].rotation.x = 0;
+      arms[1].rotation.z = 0.3 + bounce * 0.04;
+      celebration = Math.max(0, celebration - delta);
+      const cheer = celebration > 0 ? Math.sin(Math.PI * (1 - celebration / 2)) : Math.max(0, Math.sin(elapsed * 0.22) - 0.94) * 8;
+      arms[0].rotation.z = -0.18 - cheer * 2.3;
+      figure.rotation.z = Math.sin(elapsed * 0.6) * 0.015 + cheer * 0.04;
+      local.copy(playerPosition); dock.group.worldToLocal(local);
+      const dx = local.x - x, dz = local.z - z;
+      const target = Math.hypot(dx, dz) < 4 ? THREE.MathUtils.clamp(Math.atan2(dx, dz), -1.5, 1.5) : 0;
+      look = THREE.MathUtils.damp(look, target, 2.2, delta); head.rotation.y = look;
+    } catch (error) { /* Animation must not stop the walkabout. */ }
+  }
+  return { update, canInteract, interact };
+}
+
+// The altar faces inward and stays close to the wall, clear of the door path.
+export function buildBrunsonShrine(interior, azimuth, floorY, roomRadius, colliders) {
+  const angle = azimuth + SHRINE_ANGLE_OFFSET;
+  const distance = roomRadius - 0.27;
+  const shrine = new THREE.Group(); shrine.name = "Brunson Shrine";
+  shrine.position.set(Math.sin(angle) * distance, floorY, Math.cos(angle) * distance);
+  shrine.rotation.y = angle + Math.PI; interior.add(shrine);
+  colliders.push({ x: shrine.position.x, z: shrine.position.z, radius: 0.31 });
+  const mat = color => new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
+  const wood = mat(0x70472b), white = mat(0xf3f0e7);
+  const box = new THREE.BoxGeometry(1, 1, 1), cylinder = new THREE.CylinderGeometry(1, 1, 1, 10), sphere = new THREE.SphereGeometry(1, 12, 8);
+  const mesh = (parent, geometry, material, position, scale) => {
+    const part = new THREE.Mesh(geometry, material); part.position.set(...position); part.scale.set(...scale);
+    part.castShadow = true; part.receiveShadow = true; parent.add(part); return part;
+  };
     for (const side of [-1, 1]) mesh(shrine, box, wood, [side * 0.33, 0.38, 0], [0.09, 0.76, 0.32]);
     mesh(shrine, box, wood, [0, 0.72, 0], [0.85, 0.10, 0.40]);
     mesh(shrine, box, wood, [0, 0.42, 0], [0.78, 0.08, 0.36]);
@@ -118,46 +180,15 @@ export function buildBrunson(dock, colliders, sampleGround) {
       const flame = mesh(shrine, sphere, new THREE.MeshBasicMaterial({ color: 0xffb52e }), [side * 0.32, 0.95, 0.08], [0.035, 0.07, 0.035]); flames.push(flame);
     }
     const light = new THREE.PointLight(0xffa344, 0.7, 3); light.position.set(0, 1.05, 0.2); shrine.add(light);
-    makeBall(shrine, -0.24, 0.13, 0.28); makeBall(shrine, 0.20, 0.13, 0.31);
+    makeBasketball(shrine, -0.20, 0.555, 0, 0.095); makeBasketball(shrine, 0.20, 0.555, 0, 0.095);
     mesh(shrine, cylinder, wood, [0.42, 1.13, 0], [0.018, 0.8, 0.018]);
     const flagShape = new THREE.BufferGeometry();
     flagShape.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 0, 0.28, 0, 0.35, 0.14, 0], 3)); flagShape.computeVertexNormals();
     mesh(shrine, flagShape, new THREE.MeshStandardMaterial({ color: 0x006bb6, side: THREE.DoubleSide }), [0.42, 1.25, 0], [1, 1, 1]);
-    shrine.userData.flames = flames; shrine.userData.light = light;
-    figure.userData.shrine = shrine;
-  }
-  const facing = new THREE.Vector3(), toFigure = new THREE.Vector3(), local = new THREE.Vector3();
-  let celebration = 0, look = 0;
-  const lines = ["Captain Clutch at your service.", "Knicks in 5.", "Let's go New York!", "Keep that light shining!"];
-  function canInteract(camera) {
-    toFigure.set(world.x - camera.position.x, 0, world.z - camera.position.z);
-    const distance = toFigure.length();
-    if (distance > 2.8 || distance < 0.01) return false;
-    camera.getWorldDirection(facing); facing.y = 0; facing.normalize();
-    return facing.dot(toFigure) / distance > 0.77;
-  }
-  function interact() { celebration = 2; showToast(lines[Math.floor(Math.random() * lines.length)], 4000); }
-  function update(delta, elapsed, playerPosition) {
+  return { update(elapsed) {
     try {
-      const bounce = Math.abs(Math.sin(elapsed * 3.3));
-      ball.position.y = 0.12 + bounce * 0.68;
-      const squash = Math.max(0, 1 - bounce * 8) * 0.22;
-      ball.scale.set(1 + squash * 0.5, 1 - squash, 1 + squash * 0.5);
-      arms[1].rotation.x = -0.35 - bounce * 0.45;
-      celebration = Math.max(0, celebration - delta);
-      const cheer = celebration > 0 ? Math.sin(Math.PI * (1 - celebration / 2)) : Math.max(0, Math.sin(elapsed * 0.22) - 0.94) * 8;
-      arms[0].rotation.z = -0.18 - cheer * 2.3;
-      figure.rotation.z = Math.sin(elapsed * 0.6) * 0.015 + cheer * 0.04;
-      local.copy(playerPosition); dock.group.worldToLocal(local);
-      const dx = local.x - x, dz = local.z - z;
-      const target = Math.hypot(dx, dz) < 4 ? THREE.MathUtils.clamp(Math.atan2(dx, dz), -1.5, 1.5) : 0;
-      look = THREE.MathUtils.damp(look, target, 2.2, delta); head.rotation.y = look;
-      const shrine = figure.userData.shrine;
-      if (shrine) {
-        shrine.userData.flames.forEach((flame, i) => { flame.scale.y = 0.07 * (0.8 + 0.2 * Math.sin(elapsed * 9 + i * 2)); });
-        shrine.userData.light.intensity = 0.65 + Math.sin(elapsed * 8) * 0.08;
-      }
-    } catch (error) { /* Animation must not stop the walkabout. */ }
-  }
-  return { update, canInteract, interact };
+      flames.forEach((flame, i) => { flame.scale.y = 0.07 * (0.8 + 0.2 * Math.sin(elapsed * 9 + i * 2)); });
+      light.intensity = 0.65 + Math.sin(elapsed * 8) * 0.08;
+    } catch (error) { /* Keep the walkabout running if a decorative light fails. */ }
+  } };
 }
