@@ -55,6 +55,7 @@ export function createWeather(scene, camera, cloudMaterial, sampleGround, roomFl
   }
   let nextRing = 0, ringIndex = 0;
   let context = null, master = null, filter = null, noise = null, muted = false, playing = false;
+  let volume = 1;
   let nextTick = 0, nextThunder = 0;
   function start() {
     playing = true;
@@ -149,7 +150,7 @@ export function createWeather(scene, camera, cloudMaterial, sampleGround, roomFl
       }
       if (context && master) {
         const now = context.currentTime;
-        master.gain.setTargetAtTime(playing && !muted ? dim * (inside ? 0.025 : 0.11) : 0, now, 0.4);
+        master.gain.setTargetAtTime(playing && !muted ? volume * dim * (inside ? 0.025 : 0.11) : 0, now, 0.4);
         filter.frequency.setTargetAtTime(inside ? 700 : 3500, now, 0.5);
         if (playing && !muted && dim > 0.2 && now >= nextTick) {
           soundEvent(false, dim); nextTick = now + random(0.15, 0.55);
@@ -162,5 +163,5 @@ export function createWeather(scene, camera, cloudMaterial, sampleGround, roomFl
       // Weather is cosmetic; an audio or geometry failure must not stop rendering.
     }
   }
-  return { update, start, pause() { playing = false; }, setMuted(value) { muted = value; } };
+  return { update, start, pause() { playing = false; }, setMuted(value) { muted = value; }, setVolume(value) { volume = value; } };
 }

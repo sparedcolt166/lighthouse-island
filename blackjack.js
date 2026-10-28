@@ -105,6 +105,8 @@ export function buildBlackjack(scene, azimuth, floorY, onOpen, onClose) {
   button("refill", "Refill chips", () => { if (phase !== "play" && balance <= 0) { balance = 100; bet = 10; result = "The house spots you 100 chips."; render(); } });
   document.body.append(overlay); render();
   return {
+    getState: () => ({ balance }),
+    setState(value) { if (value && Number.isFinite(value.balance) && value.balance >= 0 && value.balance <= 100000000) { balance = value.balance; bet = Math.max(1, Math.min(10, balance)); render(); } },
     get open() { return !overlay.hidden; },
     canInteract(camera) {
       const dx = camera.position.x - Math.sin(angle) * -0.65, dz = camera.position.z - Math.cos(angle) * -0.65;

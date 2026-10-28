@@ -20,6 +20,8 @@ import { buildUpperRoom } from "./upper-room.js";
 import { buildDayNight } from "./daynight.js";
 import { createWeather } from "./weather.js";
 import { buildBlackjack } from "./blackjack.js";
+import { createSettings } from "./settings.js";
+import { readSave, writeSave, clearSave } from "./save.js";
 
 // ---------------------------------------------------------------------------
 // Page bits
@@ -35,6 +37,7 @@ const lookHint = document.querySelector("#look-hint");
 const interact = document.querySelector("#interact");
 const interactLabel = document.querySelector("#interact-label");
 const startPrompt = document.querySelector("#start-prompt");
+const pauseMenu = document.querySelector("#pause-menu");
 
 // The Blender scene was modelled at roughly half human scale (the front door is
 // only 0.76m tall). Scale the whole island up so a normal-sized person can walk
@@ -395,6 +398,44 @@ let pointerLockBlocked = false;
 let dragging = false;
 let lastPointerX = 0;
 let lastPointerY = 0;
+let settings;
+function applySettings(values) {
+  controls.pointerSpeed = 0.9 * values.sensitivity;
+  camera.fov = values.fov;
+  camera.updateProjectionMatrix();
+  const cap = values.quality === "low" ? 1 : values.quality === "medium" ? 1.5 : 2;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap));
+  renderer.shadowMap.enabled = values.quality !== "low";
+  renderer.shadowMap.needsUpdate = true;
+  // Integration hook: forward values.quality to water-graphics.js when available.
+  ambientAudio.setVolumes(values);
+  weather.setVolume(values.master * values.effects);
+}
+settings = createSettings(applySettings);
+
+function saveProgress() {
+  if (!player.started || testSetup) return;
+  try {
+    writeSave({ position: player.feet.toArray(), rotation: camera.quaternion.toArray(),
+      time: dayNight?.getState(), blackjack: blackjack?.getState(), fishing: fishing?.getState(), muted: ambientAudio.getMuted() });
+  } catch (error) { console.warn("Could not save the walk", error); }
+}
+function restoreProgress(saved) {
+  if (!saved) return;
+  const valid = (v, n, limit) => Array.isArray(v) && v.length === n && v.every(x => typeof x === "number" && Number.isFinite(x) && Math.abs(x) <= limit);
+  if (valid(saved.position, 3, 500) && valid(saved.rotation, 4, 1) && saved.rotation.some(x => Math.abs(x) > 0.01)) {
+    player.feet.fromArray(saved.position);
+    player.eyeY = player.feet.y + EYE_HEIGHT;
+    camera.position.set(player.feet.x, player.eyeY, player.feet.z);
+    camera.quaternion.fromArray(saved.rotation).normalize();
+  }
+  dayNight?.setState(saved.time);
+  blackjack?.setState(saved.blackjack);
+  fishing?.setState(saved.fishing);
+  if (typeof saved.muted === "boolean") { ambientAudio.setMuted(saved.muted); weather.setMuted(saved.muted); }
+}
+setInterval(saveProgress, 20000);
+window.addEventListener("beforeunload", saveProgress);
 
 // Door + lighthouse interior state, filled in once the GLB has loaded.
 let doorPivot = null;
@@ -540,7 +581,9 @@ window.addEventListener("keydown", (event) => {
   }
   // Before the first walk the menu is hidden; Esc brings it up.
   if (event.code === "Escape" && !walkMode) {
-    overlay.classList.remove("hidden");
+    event.preventDefault();
+    if (player.started) enterWalkabout();
+    else overlay.classList.toggle("hidden");
     return;
   }
   // On the title flyover any key starts the walk. A keypress counts as a user
@@ -1526,6 +1569,8 @@ function updateDoor(dt) {
 
 function setPlayingUI() {
   overlay.classList.add("hidden");
+  overlay.classList.remove("paused");
+  pauseMenu.hidden = true;
   crosshair.classList.add("visible");
   hud.classList.add("visible");
   statusLine.textContent = "";
@@ -1546,6 +1591,7 @@ function enterWalkabout() {
 
   if (!player.started) {
     placeAtStart();
+    if (!testSetup) restoreProgress(readSave());
   }
 
   attract.stop();
@@ -1567,6 +1613,7 @@ function enterWalkabout() {
     // rejection so a blocked lock falls back quietly instead of logging an
     // unhandled rejection.
     const request = canvas.requestPointerLock?.();
+    if (!canvas.requestPointerLock) { enableDragLook(); return; }
     if (request && typeof request.catch === "function") {
       request.catch(() => enableDragLook());
     }
@@ -1584,14 +1631,30 @@ function pauseWalkabout(message = "Paused. The lamp will wait.") {
   dragging = false;
   if (!player.started) return;
 
+  saveProgress();
+  overlay.classList.add("paused");
+  pauseMenu.hidden = false;
   overlay.classList.remove("hidden");
   crosshair.classList.remove("visible");
   hud.classList.remove("visible");
   enterButton.textContent = "Back to the island";
   statusLine.textContent = message;
+  document.querySelector("#resume").focus();
 }
 
 enterButton.addEventListener("click", enterWalkabout);
+document.querySelector("#resume").addEventListener("click", enterWalkabout);
+for (const name of ["settings", "controls"]) {
+  const button = document.getElementById(`${name}-toggle`);
+  const panel = document.getElementById(`${name}-panel`);
+  button.addEventListener("click", () => { panel.hidden = !panel.hidden; button.setAttribute("aria-expanded", String(!panel.hidden)); });
+}
+document.querySelector("#reset-start").addEventListener("click", () => { resetPlayer(); saveProgress(); enterWalkabout(); });
+document.querySelector("#new-game").addEventListener("click", () => {
+  if (!testSetup) clearSave(); resetPlayer(); dayNight?.setState(0); blackjack?.setState({ balance: 100 });
+  fishing?.reset();
+  ambientAudio.setMuted(false); weather.setMuted(false); enterWalkabout();
+});
 
 canvas.addEventListener("click", () => {
   if (player.ready && !walkMode) enterWalkabout();
@@ -1616,6 +1679,17 @@ document.addEventListener("pointerlockerror", () => {
   if (walkMode) enableDragLook();
 });
 
+// PointerLockControls has one speed for both axes; intercept only when Y is inverted.
+document.addEventListener("mousemove", (event) => {
+  if (!pointerLook || !settings.invertY) return;
+  event.stopImmediatePropagation();
+  cameraEuler.setFromQuaternion(camera.quaternion);
+  cameraEuler.y -= (event.movementX || 0) * 0.002 * controls.pointerSpeed;
+  cameraEuler.x += (event.movementY || 0) * 0.002 * controls.pointerSpeed;
+  cameraEuler.x = THREE.MathUtils.clamp(cameraEuler.x, -Math.PI / 2, Math.PI / 2);
+  camera.quaternion.setFromEuler(cameraEuler);
+}, true);
+
 // Fallback look control: click and drag the canvas when pointer lock is
 // blocked by the embedding browser or by a permissions policy.
 canvas.addEventListener("pointerdown", (event) => {
@@ -1639,8 +1713,8 @@ canvas.addEventListener("pointermove", (event) => {
   lastPointerY = event.clientY;
 
   cameraEuler.setFromQuaternion(camera.quaternion);
-  cameraEuler.y -= dx * 0.0024;
-  cameraEuler.x -= dy * 0.0024;
+  cameraEuler.y -= dx * 0.0024 * settings.sensitivity;
+  cameraEuler.x -= dy * 0.0024 * settings.sensitivity * (settings.invertY ? -1 : 1);
   cameraEuler.x = THREE.MathUtils.clamp(
     cameraEuler.x,
     -Math.PI / 2 + 0.02,
@@ -1706,7 +1780,7 @@ renderer.setAnimationLoop(animate);
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  applySettings(settings);
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 

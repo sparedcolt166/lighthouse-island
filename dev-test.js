@@ -10,7 +10,7 @@ export function isRainTest() {
 export function getTestSetup({ dock, tinny, doorAzimuth, roomFloor, spawn, spawnLook }) {
   if (!["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)) return null;
   const scenario = new URLSearchParams(window.location.search).get("test");
-  if (scenario === "controls" || scenario === "night" || scenario === "rain") return { position: spawn.clone(), lookAt: spawnLook.clone() };
+  if (scenario === "menu" || scenario === "controls" || scenario === "night" || scenario === "rain") return { position: spawn.clone(), lookAt: spawnLook.clone() };
   if (scenario === "fishing") {
     return {
       position: dock.group.localToWorld(new THREE.Vector3(-0.8, dock.deckY, dock.deckEnd - 3)),

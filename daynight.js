@@ -160,6 +160,8 @@ export function buildDayNight({ scene, skyMaterial, sunSprite, sunLight, hemisph
   originalSky.dispose();
   return {
     update,
+    getState: () => phase,
+    setState(value) { if (typeof value === "number" && Number.isFinite(value) && value >= 0 && value < 1) { phase = value; skyTimer = 1; update(0); } },
     getDaylight: () => daylight,
     getSkyColor: () => skyColor,
     getFogColor: () => scene.fog.color,

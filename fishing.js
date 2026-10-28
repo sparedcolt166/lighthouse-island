@@ -253,5 +253,13 @@ export function buildFishing(scene, camera, dock, canvas, isWalking) {
     }
   }
   function giveRod() { holding = true; held.visible = true; spare.visible = false; }
-  return { update, canInteract, interact, giveRod };
+  return { update, canInteract, interact, giveRod,
+    reset() { putAway(); fishCount = 0; total = 0; deposited = 0; },
+    getState: () => ({ fishCount, total, deposited }),
+    setState(value) {
+      if (!value) return;
+      for (const key of ["fishCount", "total", "deposited"]) if (!Number.isSafeInteger(value[key]) || value[key] < 0 || value[key] > 1000000) return;
+      fishCount = value.fishCount; total = value.total; deposited = value.deposited;
+    },
+  };
 }
