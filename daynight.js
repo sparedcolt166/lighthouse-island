@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { weatherDim } from "./weather.js";
 
 // A long afternoon, a short dusk, and roughly three minutes of night.
 const CYCLE_SECONDS = 720;
@@ -130,6 +131,12 @@ export function buildDayNight({ scene, skyMaterial, sunSprite, sunLight, hemisph
       scene.fog.color.set(a.fog).lerp(c1.set(b.fog), mix);
       waterMaterial.color.set(a.water).lerp(c1.set(b.water), mix);
       cloudMaterial.color.set(a.cloud).lerp(c1.set(b.cloud), mix);
+      // Showers dim on top of the time of day, as weather.js describes: this
+      // runs after it each frame, so the base values here would otherwise win.
+      const shower = weatherDim * weatherDim * (3 - 2 * weatherDim);
+      cloudMaterial.color.lerp(c1.set(0x6f777d).multiplyScalar(0.35 + 0.65 * daylight), shower * 0.7);
+      sunLight.intensity *= 1 - 0.4 * shower;
+      hemisphereLight.intensity *= 1 - 0.25 * shower;
       cloudMaterial.emissiveIntensity = 0.42 * (0.2 + 0.8 * daylight);
       scene.environmentIntensity = 0.85 * (0.3 + 0.7 * daylight);
       const night = 1 - daylight;

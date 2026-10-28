@@ -240,7 +240,9 @@ export function buildFisherman(dock, colliders) {
     camera.getWorldDirection(facing);
     facing.y = 0;
     facing.normalize();
-    return facing.dot(toFisherman) / distance > 0.77;
+    // A narrow ~25 degree cone: the boat and bucket sit right beside him,
+    // and looking at those shouldn't bring up his prompt.
+    return facing.dot(toFisherman) / distance > 0.9;
   }
   function interact(playerPosition) {
     if (groanTime >= 0) return;

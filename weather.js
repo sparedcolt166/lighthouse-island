@@ -9,8 +9,6 @@ export function createWeather(scene, camera, cloudMaterial, sampleGround, roomFl
   let phase = testRain ? "shower" : "clear";
   let remaining = testRain ? random(90, 180) : random(180, 360);
   weatherDim = testRain ? 1 : 0;
-  const clearCloud = cloudMaterial.color.clone();
-  const rainCloud = new THREE.Color(0x89969b);
   const fogNear = scene.fog?.near, fogFar = scene.fog?.far;
   const count = 1500, width = 24, height = 18;
   const positions = new Float32Array(count * 6);
@@ -107,7 +105,7 @@ export function createWeather(scene, camera, cloudMaterial, sampleGround, roomFl
       }
       weatherDim = THREE.MathUtils.clamp(weatherDim + (phase === "shower" ? dt : -dt) / 20, 0, 1);
       const dim = weatherDim * weatherDim * (3 - 2 * weatherDim);
-      cloudMaterial.color.copy(clearCloud).lerp(rainCloud, dim);
+      // daynight.js owns the cloud colour and greys it by weatherDim.
       darkMaterial.opacity = dim * 0.75;
       cloudGroup.rotation.y += dt * 0.002;
       skyOverlay.material.opacity = dim * 0.38;
