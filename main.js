@@ -509,6 +509,7 @@ function placeAtStart() {
 }
 function resetPlayer() {
   if (upperRoom) upperRoom.reset();
+  if (tinny) tinny.reset();
   placeAtStart();
   player.started = true;
 }
@@ -539,7 +540,8 @@ window.addEventListener("keydown", (event) => {
   keys.add(event.code);
   if (event.code === "Space" && !event.repeat && walkMode) jumpQueued = true;
   if (event.code === "KeyE" && !event.repeat && walkMode) {
-    if (canUseDoor()) toggleDoor();
+    if (tinny && tinny.canInteract(camera)) tinny.interact(player, camera);
+    else if (canUseDoor()) toggleDoor();
     else if (fisherman && fisherman.canInteract(camera)) fisherman.interact(player.feet);
   }
   if (event.code === "KeyR" && walkMode) resetPlayer();
@@ -587,6 +589,11 @@ function updatePlayer(dt) {
   moveDirection.addScaledVector(right, sideInput);
   const wantsToMove = moveDirection.lengthSq() > 0;
   if (wantsToMove) moveDirection.normalize();
+
+  if (tinny && tinny.updateRowing(player, camera, forwardInput, sideInput, dt)) {
+    jumpQueued = false;
+    return;
+  }
 
   if (upperRoom && upperRoom.update(player, forward, forwardInput, jumpQueued, dt)) {
     jumpQueued = false;
@@ -1372,7 +1379,7 @@ function onModelLoaded(gltf) {
   islands = buildIslands(scene, groundTargets, colliders, sampleGround);
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
   fisherman = buildFisherman(dock, colliders);
-  tinny = buildTinny(dock, groundTargets);
+  tinny = buildTinny(dock, groundTargets, sea, solidAt);
   seagulls = buildSeagulls(scene, model);
   ships = buildShips(scene);
   testSetup = getTestSetup({ dock, tinny, doorAzimuth, roomFloor: ROOM_FLOOR, spawn: SPAWN, spawnLook: SPAWN_LOOK });
@@ -1440,8 +1447,10 @@ function updateDoor(dt) {
 
   const near = walkMode && canUseDoor();
   const nearFisherman = walkMode && !near && fisherman && fisherman.canInteract(camera);
-  interact.classList.toggle("visible", !!(near || nearFisherman));
-  if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
+  const nearTinny = walkMode && tinny && tinny.canInteract(camera);
+  interact.classList.toggle("visible", !!(near || nearFisherman || nearTinny));
+  if (nearTinny) interactLabel.textContent = tinny.isRowing() ? "Leave the boat" : "Row the boat";
+  else if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
   else if (nearFisherman) interactLabel.textContent = "Talk to the fisherman";
 }
 
