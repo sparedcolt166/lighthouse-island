@@ -4,6 +4,7 @@ import { GLTFLoader } from "./vendor/loaders/GLTFLoader.js";
 import { buildDock } from "./dock.js";
 import { buildIslands } from "./islands.js";
 import { buildFisherman } from "./fisherman.js";
+import { buildBrunson } from "./brunson.js";
 import { buildTinny } from "./tinny.js";
 import { buildSeagulls } from "./seagulls.js";
 import { buildShips } from "./ships.js";
@@ -370,6 +371,7 @@ const sea = createWaterSystem(scene, groundTargets);
 let islands = null;
 let dock = null;
 let fisherman = null;
+let brunson = null;
 let tinny = null;
 let seagulls = null;
 let ships = null;
@@ -541,6 +543,7 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "KeyE" && !event.repeat && walkMode) {
     if (canUseDoor()) toggleDoor();
     else if (fisherman && fisherman.canInteract(camera)) fisherman.interact(player.feet);
+    else if (brunson && brunson.canInteract(camera)) brunson.interact();
   }
   if (event.code === "KeyR" && walkMode) resetPlayer();
   if (event.code === "KeyM" && !event.repeat && walkMode) showToast(ambientAudio.toggleMute() ? "Sound muted" : "Sound on", 2500);
@@ -1372,6 +1375,7 @@ function onModelLoaded(gltf) {
   islands = buildIslands(scene, groundTargets, colliders, sampleGround);
   dock = buildDock(scene, groundTargets, colliders, { sampleGround });
   fisherman = buildFisherman(dock, colliders);
+  brunson = buildBrunson(dock, colliders, sampleGround);
   tinny = buildTinny(dock, groundTargets);
   seagulls = buildSeagulls(scene, model);
   ships = buildShips(scene);
@@ -1440,9 +1444,11 @@ function updateDoor(dt) {
 
   const near = walkMode && canUseDoor();
   const nearFisherman = walkMode && !near && fisherman && fisherman.canInteract(camera);
-  interact.classList.toggle("visible", !!(near || nearFisherman));
+  const nearBrunson = walkMode && !near && !nearFisherman && brunson && brunson.canInteract(camera);
+  interact.classList.toggle("visible", !!(near || nearFisherman || nearBrunson));
   if (near) interactLabel.textContent = doorOpen ? "Close the door" : "Open the door";
   else if (nearFisherman) interactLabel.textContent = "Talk to the fisherman";
+  else if (nearBrunson) interactLabel.textContent = "Talk to Jalen";
 }
 
 // ---------------------------------------------------------------------------
@@ -1604,6 +1610,7 @@ function animate() {
   attract.update(dt);
   updatePlayer(dt);
   if (fisherman) fisherman.update(dt, elapsed, player.feet);
+  if (brunson) brunson.update(dt, elapsed, player.feet);
   if (tinny) tinny.update(elapsed);
   if (seagulls) seagulls.update(dt, elapsed, player.feet);
   if (ships) ships.update(dt, elapsed);
